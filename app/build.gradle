@@ -4,6 +4,13 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// 版本末位与 versionCode 取"距项目起点的分钟数"，随时间单调自增，无需手动改版本
+def epochCal = Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai"))
+epochCal.set(2026, Calendar.NOVEMBER, 17, 0, 0, 0)
+epochCal.set(Calendar.MILLISECOND, 0)
+def autoVersion = Math.max(1L, Math.floorDiv(System.currentTimeMillis() - epochCal.timeInMillis, 60000L))
+def buildStamp = new Date().format("yyyyMMdd-HHmm", TimeZone.getTimeZone("Asia/Shanghai"))
+
 android {
     namespace 'com.aniapp.pokerdemo'
     compileSdk {
@@ -14,16 +21,32 @@ android {
         applicationId "com.aniapp.pokerdemo"
         minSdk 28
         targetSdk 36
-        versionCode 1
-        versionName "1.0"
+        versionCode autoVersion as int
+        versionName "1.0.${autoVersion}"
+        resValue "string", "app_version", "v1.0.${autoVersion}"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        release {
+            // 演示阶段复用 debug 证书使 release 包可直接安装；正式分发前替换为正式 keystore
+            storeFile file(System.getProperty("user.home") + "/.android/debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "LSTPoker-v${variant.versionName}-${variant.buildType.name}-${buildStamp}.apk"
         }
     }
     compileOptions {

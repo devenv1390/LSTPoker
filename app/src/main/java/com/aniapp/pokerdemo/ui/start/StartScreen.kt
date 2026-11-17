@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -119,6 +120,8 @@ fun StartScreen(onStart: () -> Unit) {
             }
             Spacer(Modifier.height(18.dp))
             Text("盲注 10/20 · 起始筹码 2000", fontSize = 12.sp, color = Color.White.copy(alpha = 0.45f))
+            Spacer(Modifier.height(6.dp))
+            Text(stringResource(R.string.app_version), fontSize = 11.sp, color = Color.White.copy(alpha = 0.3f))
         }
     }
 }
