@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LSTPoker 控制台</title>
+<style>
+:root{
+  --felt-900:#04150e; --felt-800:#07271c; --felt-700:#0b3a29; --felt-600:#105138;
+  --gold:#d9b45b; --gold-bright:#f3d489; --gold-dim:rgba(217,180,91,.28);
+  --cream:#f4ecd9; --muted:#9fbcab; --muted-2:#6f8f7e;
+  --red:#e5484d; --green:#3ecf8e; --amber:#f5a623; --blue:#57a6ff;
+  --surface:rgba(9,44,31,.72); --surface-2:rgba(13,58,41,.5);
+  --border:rgba(217,180,91,.18); --border-strong:rgba(217,180,91,.4);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",-apple-system,sans-serif;
+  color:var(--cream); min-height:100vh; background:var(--felt-900);
+  background-image:
+    radial-gradient(1100px 700px at 50% -12%, rgba(26,122,84,.35), transparent 65%),
+    radial-gradient(900px 600px at 88% 108%, rgba(16,81,56,.5), transparent 60%),
+    radial-gradient(ellipse at 50% 55%, #0a3a27 0%, #04150e 78%);
+  background-attachment:fixed;
+}
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+}
+.bg-suit{position:fixed;font-size:340px;line-height:1;pointer-events:none;z-index:0;user-select:none;opacity:.045}
+.bg-suit.s1{top:-60px;right:-50px;color:var(--gold);transform:rotate(14deg)}
+.bg-suit.s2{bottom:-90px;left:-60px;color:var(--red);transform:rotate(-12deg)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:rgba(2,12,7,.55);border-radius:8px}
+::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--gold-dim),var(--felt-600));border-radius:8px;border:2px solid rgba(2,12,7,.55)}
+::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--gold),var(--felt-600))}
+*{scrollbar-width:thin;scrollbar-color:var(--gold-dim) rgba(2,12,7,.55)}
+
+.topbar{
+  position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:14px 28px;background:rgba(4,21,14,.82);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.brand{display:flex;align-items:center;gap:12px;margin-right:auto}
+.brand .chip-logo{width:42px;height:42px;flex:none;filter:drop-shadow(0 2px 8px rgba(217,180,91,.35))}
+.brand h1{font-size:19px;font-weight:700;letter-spacing:.5px}
+.brand h1 em{font-style:normal;color:var(--gold-bright)}
+.brand .sub{font-size:11px;color:var(--muted);letter-spacing:2px;margin-top:2px}
+.live-pill{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);
+  padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface-2)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+.dot.bad{background:var(--red);box-shadow:0 0 8px var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.domain-pill{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--gold-bright);
+  padding:6px 12px;border:1px solid var(--border-strong);border-radius:999px;background:rgba(217,180,91,.08)}
+.icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;border-radius:6px;display:flex;transition:.15s}
+.icon-btn:hover{color:var(--gold-bright);background:rgba(217,180,91,.12)}
+
+main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:26px 24px 60px}
+section{margin-bottom:26px;animation:rise .5s ease both}
+section:nth-of-type(2){animation-delay:.08s}
+section:nth-of-type(3){animation-delay:.16s}
+section:nth-of-type(4){animation-delay:.24s}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
+.sec-head h2{font-size:14px;font-weight:600;color:var(--gold);letter-spacing:3px}
+.sec-head .hint{font-size:12px;color:var(--muted-2)}
+.sec-head .spacer{margin-left:auto}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(212px,1fr));gap:14px}
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 16px 14px;
+  box-shadow:0 8px 24px rgba(0,0,0,.35);position:relative;overflow:hidden;transition:border-color .2s;
+}
+.card:hover{border-color:var(--border-strong)}
+.card::after{content:"";position:absolute;top:0;left:16px;right:16px;height:1px;
+  background:linear-gradient(90deg,transparent,var(--gold-dim),transparent)}
+.card .label{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);letter-spacing:1px;margin-bottom:10px}
+.card .label svg{width:14px;height:14px;color:var(--gold);flex:none}
+.chip-state{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:700;
+  padding:5px 14px;border-radius:999px;border:2px dashed transparent;margin-bottom:10px}
+.chip-state::before{content:"";width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.chip-state.ok{color:var(--green);border-color:rgba(62,207,142,.4);background:rgba(62,207,142,.08)}
+.chip-state.bad{color:var(--red);border-color:rgba(229,72,77,.4);background:rgba(229,72,77,.08)}
+.chip-state.warn{color:var(--amber);border-color:rgba(245,166,35,.4);background:rgba(245,166,35,.08)}
+.chip-state.idle{color:var(--muted);border-color:rgba(159,188,171,.3);background:rgba(159,188,171,.06)}
+.kv{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0;color:var(--muted)}
+.kv b{font-weight:500;color:var(--cream);font-family:var(--mono);font-size:12px;text-align:right}
+.addr{font-family:var(--mono);font-size:13px;color:var(--gold-bright);word-break:break-all;line-height:1.5;margin-bottom:8px}
+.copy-btn{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;transition:.15s}
+.copy-btn:hover{color:var(--gold-bright);border-color:var(--border-strong)}
+.card .note{font-size:11px;color:var(--muted-2);margin-top:8px;line-height:1.5}
+
+.controls{display:flex;flex-wrap:wrap;gap:12px}
+.btn{
+  display:inline-flex;align-items:center;gap:9px;padding:12px 20px;border-radius:12px;border:1px solid transparent;
+  font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;transition:.18s;color:var(--cream);
+}
+.btn svg{width:16px;height:16px;flex:none}
+.btn small{display:block;font-size:10px;font-weight:400;opacity:.75;margin-top:1px}
+.btn .txt{text-align:left;line-height:1.25}
+.btn:hover:not(:disabled){transform:translateY(-2px)}
+.btn:active:not(:disabled){transform:translateY(0)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.green{background:linear-gradient(160deg,#1d9e68,#127a4e);box-shadow:0 4px 16px rgba(30,158,104,.3)}
+.btn.green:hover:not(:disabled){box-shadow:0 8px 22px rgba(30,158,104,.45)}
+.btn.red{background:linear-gradient(160deg,#d43a40,#a32328);box-shadow:0 4px 16px rgba(212,58,64,.3)}
+.btn.red:hover:not(:disabled){box-shadow:0 8px 22px rgba(212,58,64,.45)}
+.btn.gold{background:linear-gradient(160deg,#c9a24a,#a07c2c);color:#1d1503;box-shadow:0 4px 16px rgba(201,162,74,.3)}
+.btn.gold:hover:not(:disabled){box-shadow:0 8px 22px rgba(201,162,74,.5)}
+.btn.blue{background:rgba(87,166,255,.1);border-color:rgba(87,166,255,.45);color:#a8d0ff}
+.btn.blue:hover:not(:disabled){background:rgba(87,166,255,.2);box-shadow:0 6px 18px rgba(87,166,255,.2)}
+.btn.ghost{background:var(--surface-2);border-color:var(--border);color:var(--muted)}
+.btn.ghost:hover:not(:disabled){color:var(--gold-bright);border-color:var(--border-strong)}
+
+.op-banner{display:none;margin-bottom:14px;padding:14px 16px;border-radius:12px;
+  border:1px solid rgba(245,166,35,.4);background:rgba(245,166,35,.07)}
+.op-banner.show{display:block;animation:rise .3s ease}
+.op-head{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:var(--amber)}
+.op-head .elapsed{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.spin{width:18px;height:18px;flex:none;animation:rot 1.6s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.op-lines{margin-top:10px;max-height:130px;overflow:auto;font-family:var(--mono);font-size:11px;
+  color:var(--muted);background:rgba(2,12,7,.5);border-radius:8px;padding:8px 10px;white-space:pre-wrap;word-break:break-all}
+
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+th{font-size:11px;color:var(--muted-2);letter-spacing:1.5px;font-weight:500;text-align:left;
+  padding:11px 16px;border-bottom:1px solid var(--border);background:rgba(2,12,7,.35)}
+td{padding:11px 16px;border-bottom:1px solid rgba(217,180,91,.08);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(217,180,91,.04)}
+.room-code{font-family:var(--mono);font-weight:700;font-size:14px;color:var(--gold-bright);letter-spacing:2px;
+  background:rgba(217,180,91,.1);border:1px solid var(--border-strong);border-radius:8px;padding:3px 9px;display:inline-block}
+.tag{display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid}
+.tag.play{color:var(--green);border-color:rgba(62,207,142,.4);background:rgba(62,207,142,.08)}
+.tag.lobby{color:var(--muted);border-color:rgba(159,188,171,.3);background:rgba(159,188,171,.06)}
+.tag.on{color:var(--blue);border-color:rgba(87,166,255,.4);background:rgba(87,166,255,.08)}
+.tag.off{color:var(--muted-2);border-color:rgba(111,143,126,.3)}
+.empty-state{padding:36px 20px;text-align:center;color:var(--muted-2);font-size:13px;line-height:1.8}
+.empty-state .big{font-size:30px;opacity:.5;margin-bottom:6px}
+.count-badge{font-family:var(--mono);font-size:11px;color:var(--gold-bright);background:rgba(217,180,91,.12);
+  border:1px solid var(--border);border-radius:999px;padding:2px 10px}
+
+.log-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--border);background:rgba(2,12,7,.35)}
+.tab{font-size:12px;font-family:inherit;color:var(--muted);background:none;border:1px solid transparent;
+  border-radius:8px;padding:6px 13px;cursor:pointer;transition:.15s}
+.tab:hover{color:var(--cream)}
+.tab.active{color:var(--gold-bright);background:rgba(217,180,91,.1);border-color:var(--border-strong)}
+.log-tools{margin-left:auto;display:flex;align-items:center;gap:8px}
+.tool-btn{font-size:11px;font-family:inherit;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);
+  border-radius:7px;padding:4px 10px;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:5px}
+.tool-btn:hover{color:var(--gold-bright);border-color:var(--border-strong)}
+.tool-btn.on{color:var(--amber);border-color:rgba(245,166,35,.45)}
+.conn-state{font-size:11px;color:var(--muted-2)}
+.conn-state.err{color:var(--red)}
+.log-body{height:340px;overflow-y:auto;padding:12px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.75;
+  color:#b9d6c4;background:#031009;white-space:pre-wrap;word-break:break-all}
+.log-body div{padding:0 4px;border-radius:4px}
+.log-body div:hover{background:rgba(217,180,91,.06)}
+.log-body .sys{color:var(--amber)}
+.log-count{font-size:11px;color:var(--muted-2);font-family:var(--mono)}
+
+footer{position:relative;z-index:1;text-align:center;font-size:11px;color:var(--muted-2);padding:0 20px 34px;line-height:1.9}
+footer .lock{color:var(--gold)}
+
+.scrim{position:fixed;inset:0;z-index:100;background:rgba(2,10,6,.72);backdrop-filter:blur(4px);
+  display:none;align-items:center;justify-content:center;padding:20px}
+.scrim.show{display:flex}
+.dialog{width:min(430px,100%);background:linear-gradient(170deg,#0d4230,#07271c);border:1px solid var(--border-strong);
+  border-radius:16px;padding:24px;box-shadow:0 24px 60px rgba(0,0,0,.6);animation:pop .22s ease}
+@keyframes pop{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+.dialog h3{font-size:16px;margin-bottom:10px;display:flex;align-items:center;gap:9px}
+.dialog h3 svg{width:20px;height:20px;color:var(--amber)}
+.dialog p{font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:20px}
+.dialog .row{display:flex;gap:10px;justify-content:flex-end}
+.dialog .btn{padding:9px 18px;font-size:13px}
+
+.toasts{position:fixed;right:20px;bottom:20px;z-index:200;display:flex;flex-direction:column;gap:10px;max-width:min(360px,calc(100vw - 40px))}
+.toast{padding:12px 16px;border-radius:12px;font-size:13px;line-height:1.6;color:var(--cream);
+  background:rgba(7,39,28,.95);border:1px solid var(--border);border-left:4px solid var(--gold);
+  box-shadow:0 10px 30px rgba(0,0,0,.5);animation:slidein .25s ease}
+.toast.ok{border-left-color:var(--green)}
+.toast.err{border-left-color:var(--red)}
+.toast.warn{border-left-color:var(--amber)}
+.toast.out{animation:slideout .3s ease forwards}
+@keyframes slidein{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+@keyframes slideout{to{opacity:0;transform:translateX(30px)}}
+
+@media (max-width:640px){
+  .topbar{padding:12px 16px}
+  main{padding:18px 14px 48px}
+  .brand h1{font-size:16px}
+  .domain-pill{display:none}
+  .btn{flex:1 1 44%;justify-content:center}
+  .log-body{height:260px}
+  .bg-suit{font-size:200px}
+}
+</style>
+</head>
+<body>
+<div class="bg-suit s1">♠</div>
+<div class="bg-suit s2">♥</div>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="chip-logo" viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#0b3a29" stroke="#d9b45b" stroke-width="2.5"/><circle cx="24" cy="24" r="15.5" fill="none" stroke="#d9b45b" stroke-width="1.4" stroke-dasharray="5 4"/><g fill="#d9b45b"><rect x="21.4" y="1" width="5.2" height="7" rx="1.6"/><rect x="21.4" y="40" width="5.2" height="7" rx="1.6"/><rect x="1" y="21.4" width="7" height="5.2" rx="1.6"/><rect x="40" y="21.4" width="7" height="5.2" rx="1.6"/></g><text x="24" y="30" text-anchor="middle" font-size="17" fill="#f3d489">♠</text></svg>
+    <div>
+      <h1>LSTPoker <em>控制台</em></h1>
+      <div class="sub">SERVER ADMIN · 仅本机访问</div>
+    </div>
+  </div>
+  <div class="live-pill"><span class="dot" id="pollDot"></span><span id="pollText">实时刷新中</span></div>
+  <div class="domain-pill"><span id="topAddr">poker.lain-priv.work</span>
+    <button class="icon-btn" onclick="copyAddr()" title="复制公网地址"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="sec-head"><h2>状态总览</h2><span class="hint">每 2.5 秒自动刷新</span></div>
+    <div class="grid">
+      <div class="card">
+        <div class="label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>游戏服务器</div>
+        <div class="chip-state idle" id="stServer">检测中</div>
+        <div class="kv"><span>进程 PID</span><b id="svPid">—</b></div>
+        <div class="kv"><span>运行时长</span><b id="svUp">—</b></div>
+        <div class="kv"><span>内存占用</span><b id="svRss">—</b></div>
+        <div class="kv"><span>本地探测</span><b id="svProbe">—</b></div>
+      </div>
+      <div class="card">
+        <div class="label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg>Cloudflare 隧道</div>
+        <div class="chip-state idle" id="stTunnel">检测中</div>
+        <div class="kv"><span>进程 PID</span><b id="tnPid">—</b></div>
+        <div class="kv"><span>运行时长</span><b id="tnUp">—</b></div>
+        <div class="kv"><span>链路模式</span><b id="tnMode">—</b></div>
+      </div>
+      <div class="card">
+        <div class="label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3z"/></svg>公网可达性</div>
+        <div class="chip-state idle" id="stPublic">检测中</div>
+        <div class="kv"><span>HTTP 状态</span><b id="pbCode">—</b></div>
+        <div class="kv"><span>探测延迟</span><b id="pbLat">—</b></div>
+        <div class="kv"><span>上次检测</span><b id="pbAt">—</b></div>
+      </div>
+      <div class="card">
+        <div class="label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6z"/></svg>launchd 守护</div>
+        <div class="chip-state idle" id="stService">检测中</div>
+        <div class="kv"><span>服务状态</span><b id="lcState">—</b></div>
+        <div class="kv"><span>守护 PID</span><b id="lcPid">—</b></div>
+        <div class="note">KeepAlive 保活：进程意外退出会被自动拉起，停止服务请使用下方控制按钮。</div>
+      </div>
+      <div class="card">
+        <div class="label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7L12.5 19"/></svg>玩家入口</div>
+        <div class="addr" id="addrText">读取中…</div>
+        <button class="copy-btn" onclick="copyAddr()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>复制地址</button>
+        <div class="note">手机 App 通过 DNS 自动发现此地址，无需手动填写。</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>服务控制</h2><span class="hint">操作经 launchctl 执行，真实生效</span></div>
+    <div class="op-banner" id="opBanner">
+      <div class="op-head">
+        <svg class="spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#d9b45b" stroke-width="2.4" stroke-dasharray="10 6" stroke-linecap="round"/></svg>
+        <span id="opTitle">操作中</span><span class="elapsed" id="opElapsed"></span>
+      </div>
+      <div class="op-lines" id="opLines"></div>
+    </div>
+    <div class="controls">
+      <button class="btn green" id="btnStart" onclick="act('start')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>
+        <span class="txt">启动<small>拉起服务与隧道</small></span>
+      </button>
+      <button class="btn red" id="btnStop" onclick="confirmStop()">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        <span class="txt">停止<small>断开所有玩家</small></span>
+      </button>
+      <button class="btn gold" id="btnRestart" onclick="act('restart')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></svg>
+        <span class="txt">重启<small>整套服务快速重启</small></span>
+      </button>
+      <button class="btn blue" id="btnTunnel" onclick="act('tunnel')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><circle cx="12" cy="12" r="9"/></svg>
+        <span class="txt">重启隧道<small>仅 cloudflared，不动牌桌</small></span>
+      </button>
+      <button class="btn ghost" id="btnRebuild" onclick="confirmRebuild()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3z"/></svg>
+        <span class="txt">重建并重启<small>代码更新后使用 · 有停机</small></span>
+      </button>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>实时房间</h2><span class="count-badge" id="roomCount">0</span><span class="hint spacer">来自服务器 /status 快照</span></div>
+    <div class="panel"><div class="table-wrap" id="roomWrap">
+      <div class="empty-state"><div class="big">♠ ♥ ♣ ♦</div>正在读取房间数据…</div>
+    </div></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>运行日志</h2><span class="hint">实时尾随 · SSE</span></div>
+    <div class="panel">
+      <div class="log-head">
+        <button class="tab active" data-log="daemon" onclick="switchLog('daemon',this)">守护 daemon</button>
+        <button class="tab" data-log="server" onclick="switchLog('server',this)">服务器 server</button>
+        <button class="tab" data-log="cloudflared" onclick="switchLog('cloudflared',this)">隧道 cloudflared</button>
+        <div class="log-tools">
+          <span class="conn-state" id="logConn">连接中…</span>
+          <span class="log-count" id="logCount">0 行</span>
+          <button class="tool-btn" id="btnPause" onclick="togglePause()">⏸ 暂停</button>
+          <button class="tool-btn on" id="btnScroll" onclick="toggleScroll()">自动滚动</button>
+          <button class="tool-btn" onclick="clearLog()">清屏</button>
+        </div>
+      </div>
+      <div class="log-body" id="logBody"></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span class="lock">🔒</span> 管理面板绑定 127.0.0.1:8787，仅本机可访问，不经过公网隧道<br>
+  LSTPoker · 固定域名 poker.lain-priv.work · 管理面板独立常驻，游戏服务器停止时仍可在此启动
+</footer>
+
+<div class="scrim" id="scrim">
+  <div class="dialog">
+    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span id="dlgTitle"></span></h3>
+    <p id="dlgBody"></p>
+    <div class="row">
+      <button class="btn ghost" onclick="closeDialog()">取消</button>
+      <button class="btn red" id="dlgConfirm">确认</button>
+    </div>
+  </div>
+</div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const PHASE = {IDLE:"等待",PREFLOP:"翻前",FLOP:"翻牌圈",TURN:"转牌圈",RIVER:"河牌圈",SHOWDOWN:"摊牌",HAND_OVER:"本手结束",MATCH_OVER:"整局结束"};
+const OP_NAME = {start:"启动服务",stop:"停止服务",restart:"重启服务",rebuild:"重建并重启",tunnel:"重启隧道"};
+let latest = null, firstLoad = true, resultSeen = 0, pollTimer = null;
+let es = null, activeLog = "daemon", logPaused = false, autoScroll = true, logLines = [];
+
+function toast(msg, kind = "info", ms = 4200) {
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.textContent = msg;
+  $("toasts").appendChild(el);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 320); }, ms);
+}
+function fmtUp(sec) {
+  if (sec == null) return "—";
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60), s = Math.floor(sec % 60);
+  if (d > 0) return d + " 天 " + h + " 小时";
+  if (h > 0) return h + " 小时 " + m + " 分";
+  if (m > 0) return m + " 分 " + s + " 秒";
+  return s + " 秒";
+}
+function fmtClock(ts) { return ts ? new Date(ts).toLocaleTimeString("zh-CN", {hour12:false}) : "—"; }
+function setChip(id, cls, text) { const el = $(id); el.className = "chip-state " + cls; el.textContent = text; }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+async function fetchStatus() {
+  try {
+    const r = await fetch("/api/status", {cache: "no-store"});
+    if (!r.ok) throw new Error(r.status);
+    latest = await r.json();
+    $("pollDot").className = "dot";
+    $("pollText").textContent = "实时刷新中";
+    render(latest);
+  } catch (e) {
+    $("pollDot").className = "dot bad";
+    $("pollText").textContent = "面板连接中断";
+  }
+}
+
+function render(s) {
+  // 服务器
+  if (s.server.up) setChip("stServer", "ok", "在线");
+  else if (s.op && (s.op.kind === "start" || s.op.kind === "restart" || s.op.kind === "rebuild")) setChip("stServer", "warn", "启动中");
+  else setChip("stServer", "bad", "离线");
+  $("svPid").textContent = s.server.pid ?? "—";
+  $("svUp").textContent = fmtUp(s.server.uptimeSec);
+  $("svRss").textContent = s.server.rssKb != null ? (s.server.rssKb / 1024).toFixed(0) + " MB" : "—";
+  $("svProbe").textContent = s.server.probeCode != null ? s.server.probeCode + " · " + s.server.probeMs + "ms" : "无响应";
+  // 隧道
+  if (s.tunnel.pid != null) setChip("stTunnel", "ok", "运行中");
+  else if (s.op && s.op.kind === "tunnel") setChip("stTunnel", "warn", "重启中");
+  else setChip("stTunnel", "bad", "未运行");
+  $("tnPid").textContent = s.tunnel.pid ?? "—";
+  $("tnUp").textContent = fmtUp(s.tunnel.uptimeSec);
+  $("tnMode").textContent = s.tunnel.mode === "lhr" ? "localhost.run 备用" : "CF 命名隧道";
+  // 公网
+  if (s.public.checkedAt === 0) setChip("stPublic", "idle", "检测中");
+  else if (s.public.ok) setChip("stPublic", "ok", "可达");
+  else setChip("stPublic", "bad", "不可达");
+  $("pbCode").textContent = s.public.code ?? "超时";
+  $("pbLat").textContent = s.public.latencyMs != null ? s.public.latencyMs + " ms" : "—";
+  $("pbAt").textContent = fmtClock(s.public.checkedAt);
+  // launchd
+  if (s.service.loaded) setChip("stService", s.service.state === "running" ? "ok" : "warn", s.service.state === "running" ? "已加载 · 运行" : "已加载");
+  else setChip("stService", "bad", "未加载");
+  $("lcState").textContent = s.service.state ?? "not loaded";
+  $("lcPid").textContent = s.service.daemonPid ?? "—";
+  // 地址
+  const addr = s.address || "wss://poker.lain-priv.work";
+  $("addrText").textContent = addr;
+  $("topAddr").textContent = addr.replace(/^wss?:\/\//, "");
+  // 操作
+  const busy = s.op != null;
+  $("opBanner").classList.toggle("show", busy);
+  if (busy) {
+    $("opTitle").textContent = OP_NAME[s.op.kind] + " · " + s.op.phase;
+    $("opElapsed").textContent = fmtUp((Date.now() - s.op.startedAt) / 1000);
+    const lines = s.op.lines.slice(-60);
+    const box = $("opLines");
+    box.textContent = lines.join("\n");
+    box.scrollTop = box.scrollHeight;
+  }
+  $("btnStart").disabled = busy || (s.service.loaded && s.server.up);
+  $("btnStop").disabled = busy || !s.service.loaded;
+  $("btnRestart").disabled = busy || !s.service.loaded;
+  $("btnTunnel").disabled = busy || s.tunnel.pid == null;
+  $("btnRebuild").disabled = busy;
+  // 操作结果
+  if (s.lastResult && s.lastResult.finishedAt > resultSeen) {
+    if (!firstLoad) toast(s.lastResult.message, s.lastResult.ok ? "ok" : "err", 6000);
+    resultSeen = s.lastResult.finishedAt;
+  }
+  firstLoad = false;
+  renderRooms(s);
+}
+
+function renderRooms(s) {
+  const wrap = $("roomWrap");
+  if (!s.server.up) {
+    $("roomCount").textContent = "—";
+    wrap.innerHTML = '<div class="empty-state"><div class="big">♦</div>服务器离线，暂无房间数据<br>启动服务后，玩家创建的房间会实时出现在这里</div>';
+    return;
+  }
+  const rooms = (s.game && s.game.rooms) || [];
+  $("roomCount").textContent = rooms.length + " 个房间";
+  if (rooms.length === 0) {
+    wrap.innerHTML = '<div class="empty-state"><div class="big">♠ ♥ ♣ ♦</div>当前没有房间<br>玩家创建房间后会实时出现在这里</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>房间码</th><th>玩家构成</th><th>AI 补位</th><th>状态</th><th>对局详情</th></tr></thead><tbody>';
+  for (const r of rooms) {
+    const host = r.seats.find(x => x.seat === r.hostSeat);
+    html += '<tr><td><span class="room-code">' + esc(r.code) + '</span></td>'
+      + '<td>' + r.humans + ' 真人 + ' + r.ais + ' AI / ' + r.seatCount + ' 座'
+      + (host ? '<div style="font-size:11px;color:var(--muted-2);margin-top:2px">房主：' + esc(host.name) + '</div>' : '') + '</td>'
+      + '<td><span class="tag ' + (r.aiFill ? 'on' : 'off') + '">' + (r.aiFill ? '开启' : '关闭') + '</span></td>'
+      + '<td><span class="tag ' + (r.inHand ? 'play' : 'lobby') + '">' + (r.inHand ? '对局中' : '大厅等待') + '</span></td>'
+      + '<td>' + (r.hand ? '第 ' + r.hand.handNumber + ' 手 · ' + (PHASE[r.hand.phase] || r.hand.phase) + ' · 底池 ' + r.hand.pot : '<span style="color:var(--muted-2)">—</span>') + '</td></tr>';
+  }
+  wrap.innerHTML = html + '</tbody></table>';
+}
+
+async function post(path) {
+  try {
+    const r = await fetch(path, {method: "POST", headers: {"X-Admin-Request": "1"}});
+    if (r.status === 202) { toast("操作已提交，正在执行…", "info", 2500); fetchStatus(); }
+    else if (r.status === 409) toast("已有操作进行中，请等待完成", "warn");
+    else toast("请求失败（HTTP " + r.status + "）", "err");
+  } catch (e) { toast("无法连接管理面板", "err"); }
+}
+function act(kind) { post(kind === "tunnel" ? "/api/tunnel/restart" : "/api/service/" + kind); }
+
+function openDialog(title, body, label, fn) {
+  $("dlgTitle").textContent = title;
+  $("dlgBody").textContent = body;
+  $("dlgConfirm").textContent = label;
+  $("dlgConfirm").onclick = () => { closeDialog(); fn(); };
+  $("scrim").classList.add("show");
+}
+function closeDialog() { $("scrim").classList.remove("show"); }
+$("scrim").addEventListener("click", e => { if (e.target === $("scrim")) closeDialog(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDialog(); });
+function confirmStop() {
+  openDialog("停止服务？", "将断开所有在线玩家，公网入口随之关闭。管理面板不受影响，可随时在此重新启动。", "确认停止", () => act("stop"));
+}
+function confirmRebuild() {
+  openDialog("重建并重启？", "先停止服务，再执行 gradlew :server:installDist（约 1–3 分钟），期间玩家无法连接。构建失败时服务将保持停止。", "确认重建", () => act("rebuild"));
+}
+
+function copyAddr() {
+  const addr = (latest && latest.address) || "wss://poker.lain-priv.work";
+  (navigator.clipboard ? navigator.clipboard.writeText(addr) : Promise.reject())
+    .then(() => toast("已复制：" + addr, "ok", 2500))
+    .catch(() => toast("复制失败，请手动选择地址", "warn"));
+}
+
+function renderLog() {
+  const body = $("logBody");
+  body.innerHTML = logLines.map(l => '<div' + (l.startsWith("〔") ? ' class="sys"' : '') + '>' + esc(l) + '</div>').join("");
+  $("logCount").textContent = logLines.length + " 行";
+  if (autoScroll) body.scrollTop = body.scrollHeight;
+}
+function pushLog(line) {
+  if (logPaused) return;
+  logLines.push(line);
+  if (logLines.length > 500) logLines.splice(0, logLines.length - 500);
+  const body = $("logBody");
+  const div = document.createElement("div");
+  if (line.startsWith("〔")) div.className = "sys";
+  div.textContent = line;
+  body.appendChild(div);
+  while (body.childElementCount > 500) body.removeChild(body.firstChild);
+  $("logCount").textContent = logLines.length + " 行";
+  if (autoScroll) body.scrollTop = body.scrollHeight;
+}
+function switchLog(name, btn) {
+  if (name === activeLog && es) return;
+  activeLog = name;
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.log === name));
+  if (es) { es.close(); es = null; }
+  logLines = [];
+  $("logBody").innerHTML = "";
+  $("logCount").textContent = "0 行";
+  $("logConn").textContent = "连接中…";
+  $("logConn").className = "conn-state";
+  es = new EventSource("/api/logs/" + name + "/stream");
+  es.onopen = () => { $("logConn").textContent = "● 实时连接"; $("logConn").className = "conn-state"; };
+  es.onmessage = e => pushLog(e.data);
+  es.onerror = () => { $("logConn").textContent = "重连中…"; $("logConn").className = "conn-state err"; };
+}
+function togglePause() {
+  logPaused = !logPaused;
+  $("btnPause").textContent = logPaused ? "▶ 继续" : "⏸ 暂停";
+  $("btnPause").classList.toggle("on", logPaused);
+}
+function toggleScroll() {
+  autoScroll = !autoScroll;
+  $("btnScroll").classList.toggle("on", autoScroll);
+  if (autoScroll) $("logBody").scrollTop = $("logBody").scrollHeight;
+}
+function clearLog() { logLines = []; $("logBody").innerHTML = ""; $("logCount").textContent = "0 行"; }
+
+fetchStatus();
+pollTimer = setInterval(fetchStatus, 2500);
+switchLog("daemon", document.querySelector('.tab[data-log="daemon"]'));
+</script>
+</body>
+</html>

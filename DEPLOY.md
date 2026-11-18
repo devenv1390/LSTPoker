@@ -36,6 +36,21 @@ TXT 维护凭据（二选一）：
 
 两者都不可用时隧道仍正常工作（固定域名不受影响），只是 TXT 不维护。
 
+### 管理面板（本地 GUI）
+
+独立常驻的本地管理页面 **http://127.0.0.1:8787**（仅绑定 127.0.0.1，不经过公网隧道）：状态总览（服务器/隧道/公网可达/launchd）、图形化启动/停止/重启/重建并重启/仅重启隧道、实时房间快照、三路日志 SSE 实时尾随。游戏服务器停止时面板仍可用，可随时再启动。
+
+```bash
+./scripts/install-admin.sh    # 构建 :admin 并注册 launchd（com.aniapp.pokerdemo.admin，KeepAlive）
+launchctl kickstart -k gui/$(id -u)/com.aniapp.pokerdemo.admin   # 重启面板自身
+launchctl bootout gui/$(id -u)/com.aniapp.pokerdemo.admin        # 卸载面板
+```
+
+- 模块：`admin/`（Ktor CIO，无 :shared 依赖）；启停经 `launchctl bootout/bootstrap/kickstart` 操作 `com.aniapp.pokerdemo.server`（KeepAlive 下 kill 进程无效，必须走 launchctl）
+- 房间数据来自游戏服务器新增的 `GET /status`（仅 loopback 且无 CF 头可访问，经隧道访问返回 404）
+- 安全：Host 白名单防 DNS-rebinding；所有写操作要求 `X-Admin-Request: 1` 头；日志名白名单；不读取/展示隧道与 DNS 凭据
+- 面板日志：`~/Library/Logs/poker-admin.{out,err}.log`
+
 ### 回退 localhost.run 旧链路
 
 若 CF 边缘在大陆不可达（如运营商策略变化），可整体回退旧的 lhr 隧道：

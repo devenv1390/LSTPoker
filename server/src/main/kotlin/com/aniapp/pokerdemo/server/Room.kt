@@ -23,6 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
@@ -56,7 +57,29 @@ class RoomManager(private val aiDelayMs: LongRange = 700L..1400L) {
     fun remove(code: String) {
         rooms.remove(code)
     }
+
+    suspend fun snapshotAll(): List<RoomSnapshot> =
+        rooms.values.sortedBy { it.code }.map { it.snapshot() }
 }
+
+@Serializable
+data class SeatSnap(val seat: Int, val name: String, val isAi: Boolean, val connected: Boolean)
+
+@Serializable
+data class HandSnap(val handNumber: Int, val phase: String, val pot: Int)
+
+@Serializable
+data class RoomSnapshot(
+    val code: String,
+    val seatCount: Int,
+    val aiFill: Boolean,
+    val hostSeat: Int,
+    val humans: Int,
+    val ais: Int,
+    val inHand: Boolean,
+    val seats: List<SeatSnap>,
+    val hand: HandSnap?
+)
 
 class Room(
     val code: String,
@@ -78,6 +101,21 @@ class Room(
     private var aiJob: Job? = null
 
     private val humanCount: Int get() = seats.count { it != null && !it.isAi }
+
+    suspend fun snapshot(): RoomSnapshot = mutex.withLock {
+        val e = engine
+        RoomSnapshot(
+            code = code,
+            seatCount = seatCount,
+            aiFill = aiFill,
+            hostSeat = hostSeat,
+            humans = humanCount,
+            ais = seats.count { it != null && it.isAi },
+            inHand = inHand,
+            seats = seats.mapIndexedNotNull { i, h -> h?.let { SeatSnap(i, it.name, it.isAi, it.connected) } },
+            hand = if (inHand && e != null) HandSnap(e.state.handNumber, e.state.phase.name, e.state.pot) else null
+        )
+    }
 
     suspend fun addHuman(nickname: String, session: WebSocketServerSession): Int = mutex.withLock {
         if (inHand) throw RoomException("对局进行中，无法加入")

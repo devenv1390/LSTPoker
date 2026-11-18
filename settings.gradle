@@ -28,4 +28,5 @@ rootProject.name = "PokerDemo"
 include ':app'
 include ':shared'
 include ':server'
+include ':admin'
 include ':desktopApp'

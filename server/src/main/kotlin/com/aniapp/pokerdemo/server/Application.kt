@@ -3,15 +3,21 @@ package com.aniapp.pokerdemo.server
 import com.aniapp.pokerdemo.net.ClientMessage
 import com.aniapp.pokerdemo.net.PokerJson
 import com.aniapp.pokerdemo.net.ServerMessage
+import io.ktor.http.HttpStatusCode
+import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.response.respond
+import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import io.ktor.server.cio.CIO
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 
@@ -26,8 +32,23 @@ fun Application.module(aiDelayMs: LongRange = 700L..1400L) {
         pingPeriodMillis = 15_000
         timeoutMillis = 30_000
     }
+    install(ContentNegotiation) { json(PokerJson) }
     val manager = RoomManager(aiDelayMs)
+    val startedAt = System.currentTimeMillis()
     routing {
+        get("/status") {
+            // cloudflared 从 loopback 连入，公网流量也呈本机地址，但必带 CF 头
+            val remote = call.request.local.remoteAddress
+            val proxied = call.request.headers["Cf-Ray"] != null ||
+                call.request.headers["Cf-Connecting-Ip"] != null ||
+                call.request.headers["X-Forwarded-For"] != null
+            val loopback = remote == "127.0.0.1" || remote == "::1" || remote == "0:0:0:0:0:0:0:1"
+            if (!loopback || proxied) {
+                call.respond(HttpStatusCode.NotFound)
+                return@get
+            }
+            call.respond(StatusPayload((System.currentTimeMillis() - startedAt) / 1000, manager.snapshotAll()))
+        }
         webSocket("/ws") {
             var room: Room? = null
             var mySeat = -1
@@ -112,3 +133,6 @@ fun Application.module(aiDelayMs: LongRange = 700L..1400L) {
 
 private fun cleanName(nickname: String): String =
     nickname.trim().take(12).ifEmpty { "玩家" }
+
+@Serializable
+data class StatusPayload(val uptimeSec: Long, val rooms: List<RoomSnapshot>)
