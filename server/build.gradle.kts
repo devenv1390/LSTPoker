@@ -38,4 +38,6 @@ tasks.register<JavaExec>("e2eClient") {
     mainClass.set("com.aniapp.pokerdemo.server.E2EClientKt")
     args = (project.findProperty("e2eArgs") as String? ?: "")
         .split(" ").filter { it.isNotEmpty() }
+    (project.findProperty("e2eJvmArgs") as String? ?: "")
+        .split(" ").filter { it.isNotEmpty() }.forEach { jvmArgs(it) }
 }

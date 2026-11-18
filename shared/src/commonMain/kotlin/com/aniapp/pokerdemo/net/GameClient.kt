@@ -19,7 +19,9 @@ import kotlinx.serialization.encodeToString
 
 class GameClient(private val scope: CoroutineScope) {
     private val client = HttpClient(CIO) {
-        install(WebSockets)
+        install(WebSockets) {
+            pingIntervalMillis = 15_000
+        }
     }
     private var session: DefaultClientWebSocketSession? = null
 
@@ -29,8 +31,9 @@ class GameClient(private val scope: CoroutineScope) {
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected
 
-    suspend fun connect(host: String, port: Int) {
-        val s = client.webSocketSession(host = host, port = port, path = "/ws")
+    suspend fun connect(host: String, port: Int, secure: Boolean = false) {
+        val scheme = if (secure) "wss" else "ws"
+        val s = client.webSocketSession("$scheme://$host:$port/ws")
         session = s
         _connected.value = true
         scope.launch {

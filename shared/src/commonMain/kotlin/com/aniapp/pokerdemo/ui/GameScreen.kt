@@ -42,6 +42,7 @@ import kotlin.math.sin
 fun GameScreen(
     session: GameSession,
     notice: String? = null,
+    onBackToLobby: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val ui by session.uiState.collectAsState()
@@ -133,7 +134,7 @@ fun GameScreen(
             }
             ActionBar(ui = ui, onAction = session::act)
         }
-        HandResultOverlay(ui, onNextHand = session::nextHand, onNewMatch = session::newMatch)
+        HandResultOverlay(ui, onNextHand = session::nextHand, onNewMatch = session::newMatch, onBackToLobby = onBackToLobby)
     }
 }
 

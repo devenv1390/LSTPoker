@@ -113,7 +113,7 @@ fun App(
                     onAiFill = session::setAiFill,
                     onLeave = { screen = AppScreen.Start }
                 )
-                OnlineSession.Phase.Playing -> GameScreen(session, notice = error)
+                OnlineSession.Phase.Playing -> GameScreen(session, notice = error, onBackToLobby = session::backToLobby)
                 is OnlineSession.Phase.Ended -> CenterMessage {
                     Text(p.message, color = Color.White, fontSize = 16.sp)
                     Spacer(Modifier.height(16.dp))

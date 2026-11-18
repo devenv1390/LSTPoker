@@ -38,6 +38,7 @@ fun HandResultOverlay(
     ui: GameUiState,
     onNextHand: () -> Unit,
     onNewMatch: () -> Unit,
+    onBackToLobby: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val phase = ui.table.phase
@@ -137,6 +138,15 @@ fun HandResultOverlay(
                             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF1B1B1B))
                         ) { Text("下一手") }
                     }
+                }
+                if (ui.online && onBackToLobby != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "返回大厅",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 14.sp,
+                        modifier = Modifier.clickable { onBackToLobby() }
+                    )
                 }
             }
         }

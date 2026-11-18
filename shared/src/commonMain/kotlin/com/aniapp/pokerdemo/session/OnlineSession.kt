@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 data class OnlineConfig(
     val host: String,
@@ -19,7 +20,8 @@ data class OnlineConfig(
     val nickname: String,
     val seatCount: Int? = null,
     val joinCode: String? = null,
-    val aiFill: Boolean = true
+    val aiFill: Boolean = true,
+    val secure: Boolean = false
 )
 
 class OnlineSession(
@@ -47,6 +49,7 @@ class OnlineSession(
     private var mySeat = -1
     private var hostSeat = -1
     private var roomCode: String? = null
+    private var pendingLobby: Phase.InLobby? = null
 
     private val _phase = MutableStateFlow<Phase>(Phase.Connecting)
     val phase: StateFlow<Phase> = _phase.asStateFlow()
@@ -62,12 +65,28 @@ class OnlineSession(
     init {
         scope.launch {
             try {
-                client.connect(config.host, config.port)
+                withTimeout(30_000) {
+                    // 免费隧道边缘偶发 502，握手失败重试两次后再报错
+                    var backoff = 1500L
+                    repeat(3) { attempt ->
+                        try {
+                            client.connect(config.host, config.port, config.secure)
+                            return@withTimeout
+                        } catch (e: Exception) {
+                            if (attempt == 2) throw e
+                            kotlinx.coroutines.delay(backoff)
+                            backoff *= 2
+                        }
+                    }
+                }
                 val join = config.joinCode
                 if (join != null) client.send(ClientMessage.JoinRoom(join, config.nickname))
                 else client.send(ClientMessage.CreateRoom(config.nickname, config.seatCount ?: 6, config.aiFill))
             } catch (e: Exception) {
-                _phase.value = Phase.Ended("无法连接服务器：${e.message ?: "网络错误"}")
+                _phase.value = Phase.Ended(
+                    if (config.secure) "无法连接服务器：请确认房主已启动服务器与隧道，且地址是最新的（快速隧道每次重启地址会变）"
+                    else "无法连接服务器：请确认服务器已启动，地址与端口正确"
+                )
             }
         }
         scope.launch {
@@ -76,7 +95,10 @@ class OnlineSession(
         scope.launch {
             client.connected.drop(1).collect { connected ->
                 if (!connected && !disposed && _phase.value !is Phase.Ended) {
-                    _phase.value = Phase.Ended("与服务器断开连接")
+                    _phase.value = Phase.Ended(
+                        if (config.secure) "与服务器断开连接（房主机器或隧道可能已关闭）"
+                        else "与服务器断开连接"
+                    )
                 }
             }
         }
@@ -91,7 +113,14 @@ class OnlineSession(
             is ServerMessage.Lobby -> {
                 hostSeat = msg.hostSeat
                 roomCode = msg.roomCode
-                _phase.value = Phase.InLobby(msg.roomCode, msg.seats, msg.hostSeat, msg.seatCount, mySeat, msg.aiFill)
+                val lobby = Phase.InLobby(msg.roomCode, msg.seats, msg.hostSeat, msg.seatCount, mySeat, msg.aiFill)
+                // 手牌结束后服务器随即广播 Lobby，直接切换会跳过结算覆盖层，先挂起等玩家返回
+                if (_phase.value == Phase.Playing && _uiState.value.table.result != null) {
+                    pendingLobby = lobby
+                } else {
+                    pendingLobby = null
+                    _phase.value = lobby
+                }
             }
             is ServerMessage.Update -> {
                 _uiState.value = GameUiState(
@@ -101,6 +130,7 @@ class OnlineSession(
                     isHost = mySeat == hostSeat,
                     roomCode = roomCode
                 )
+                if (msg.view.result == null) pendingLobby = null
                 _phase.value = Phase.Playing
             }
             is ServerMessage.Error -> {
@@ -116,6 +146,13 @@ class OnlineSession(
 
     fun clearError() {
         _error.value = null
+    }
+
+    fun backToLobby() {
+        pendingLobby?.let {
+            pendingLobby = null
+            _phase.value = it
+        }
     }
 
     fun setAiFill(enabled: Boolean) {

@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,11 +38,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aniapp.pokerdemo.net.PublicAddress
+import com.aniapp.pokerdemo.net.ServerAddress
 import com.aniapp.pokerdemo.session.OnlineConfig
 import com.aniapp.pokerdemo.session.OnlineSession
 import com.aniapp.pokerdemo.ui.theme.Gold
 import com.aniapp.pokerdemo.ui.theme.TableBackground
 import com.aniapp.pokerdemo.ui.theme.TableSurface
+import kotlinx.coroutines.launch
 
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
@@ -60,13 +64,29 @@ fun LobbyForm(
     onBack: () -> Unit
 ) {
     var nickname by remember { mutableStateOf("") }
-    var host by remember { mutableStateOf("") }
-    var port by remember { mutableStateOf("8080") }
+    var address by remember { mutableStateOf("") }
     var creating by remember { mutableStateOf(true) }
     var seatCount by remember { mutableIntStateOf(4) }
     var aiFill by remember { mutableStateOf(true) }
     var code by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var resolving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun connectWith(addr: ServerAddress) {
+        error = null
+        onConnect(
+            OnlineConfig(
+                host = addr.host,
+                port = addr.port,
+                secure = addr.secure,
+                nickname = nickname.trim().ifEmpty { "玩家" },
+                seatCount = if (creating) seatCount else null,
+                joinCode = if (creating) null else code,
+                aiFill = aiFill
+            )
+        )
+    }
 
     Box(Modifier.fillMaxSize().background(TableBackground)) {
         Column(
@@ -80,7 +100,7 @@ fun LobbyForm(
         ) {
             Text("联机对战", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Gold)
             Spacer(Modifier.height(4.dp))
-            Text("与同一局域网内的朋友同桌，AI 补位可选", fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f))
+            Text("局域网或互联网对战，AI 补位可选", fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f))
             Spacer(Modifier.height(20.dp))
             OutlinedTextField(
                 value = nickname,
@@ -91,25 +111,15 @@ fun LobbyForm(
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = host,
-                    onValueChange = { host = it.trim() },
-                    label = { Text("服务器地址") },
-                    placeholder = { Text("如 192.168.1.5", color = Color.White.copy(alpha = 0.3f)) },
-                    singleLine = true,
-                    colors = fieldColors(),
-                    modifier = Modifier.weight(2f)
-                )
-                OutlinedTextField(
-                    value = port,
-                    onValueChange = { port = it.filter { c -> c.isDigit() }.take(5) },
-                    label = { Text("端口") },
-                    singleLine = true,
-                    colors = fieldColors(),
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            OutlinedTextField(
+                value = address,
+                onValueChange = { address = it.trim() },
+                label = { Text("服务器地址") },
+                placeholder = { Text("留空 = 公共服务器，或 wss://… / 192.168.1.5:8080", color = Color.White.copy(alpha = 0.3f)) },
+                singleLine = true,
+                colors = fieldColors(),
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModeButton("创建房间", creating, Modifier.weight(1f)) { creating = true }
@@ -149,24 +159,28 @@ fun LobbyForm(
             }
             Spacer(Modifier.height(24.dp))
             Button(
+                enabled = !resolving,
                 onClick = {
-                    val p = port.toIntOrNull()
+                    if (!creating && code.length != 4) {
+                        error = "房间码为 4 位字母"
+                        return@Button
+                    }
+                    val addr = ServerAddress.parse(address)
                     when {
-                        host.isBlank() -> error = "请填写服务器地址"
-                        p == null || p !in 1..65535 -> error = "端口不合法"
-                        !creating && code.length != 4 -> error = "房间码为 4 位字母"
+                        addr != null -> connectWith(addr)
+                        address.isNotEmpty() -> error = "服务器地址不合法（支持 wss://…、ws://… 或 host:port）"
                         else -> {
+                            resolving = true
                             error = null
-                            onConnect(
-                                OnlineConfig(
-                                    host = host,
-                                    port = p,
-                                    nickname = nickname.trim().ifEmpty { "玩家" },
-                                    seatCount = if (creating) seatCount else null,
-                                    joinCode = if (creating) null else code,
-                                    aiFill = aiFill
-                                )
-                            )
+                            scope.launch {
+                                val public = PublicAddress.resolve()
+                                resolving = false
+                                if (public == null) {
+                                    error = "无法获取公共服务器地址：请检查网络，或手动填写地址"
+                                } else {
+                                    connectWith(public)
+                                }
+                            }
                         }
                     }
                 },
@@ -174,7 +188,15 @@ fun LobbyForm(
                 shape = RoundedCornerShape(26.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF241B04))
             ) {
-                Text(if (creating) "创建并进入房间" else "加入房间", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        resolving -> "获取公共服务器地址…"
+                        creating -> "创建并进入房间"
+                        else -> "加入房间"
+                    },
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
             Spacer(Modifier.height(12.dp))
             OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {

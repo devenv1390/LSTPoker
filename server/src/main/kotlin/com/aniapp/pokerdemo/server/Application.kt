@@ -22,7 +22,10 @@ fun main() {
 }
 
 fun Application.module(aiDelayMs: LongRange = 700L..1400L) {
-    install(WebSockets)
+    install(WebSockets) {
+        pingPeriodMillis = 15_000
+        timeoutMillis = 30_000
+    }
     val manager = RoomManager(aiDelayMs)
     routing {
         webSocket("/ws") {
