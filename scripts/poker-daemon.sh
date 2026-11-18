@@ -86,6 +86,13 @@ start_server() {
 
 strip_ansi() { sed 's/\x1b\[[0-9;]*m//g'; }
 
+# lhr 边缘可能静默失效（SSH 仍连着但公网 502），靠探测发现并强制重连
+probe_ok() {
+    local code
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$1/ws" 2>/dev/null)"
+    [ "$code" = "400" ] || [ "$code" = "426" ] || [ "$code" = "101" ]
+}
+
 start_server
 LAST_URL=""
 while true; do
@@ -110,7 +117,26 @@ while true; do
             publish "$WSS"
             LAST_URL="$WSS"
         fi
-        wait "$SSH_PID"
+        BAD=0
+        TICK=0
+        while kill -0 "$SSH_PID" 2>/dev/null; do
+            sleep 5
+            TICK=$((TICK + 1))
+            if [ $((TICK % 4)) -eq 0 ]; then
+                if probe_ok "$URL"; then
+                    BAD=0
+                else
+                    BAD=$((BAD + 1))
+                    log "public probe bad ($BAD/2)"
+                fi
+                if [ "$BAD" -ge 2 ]; then
+                    log "edge silent-dead, forcing tunnel reconnect"
+                    kill "$SSH_PID" 2>/dev/null
+                    break
+                fi
+            fi
+        done
+        wait "$SSH_PID" 2>/dev/null
         log "tunnel exited, restarting in 5s"
     else
         log "ERROR: no tunnel URL within 40s"

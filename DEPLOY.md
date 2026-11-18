@@ -9,6 +9,7 @@
 
 - 服务：`com.aniapp.pokerdemo.server`（`~/Library/LaunchAgents/com.aniapp.pokerdemo.server.plist`）
 - 脚本：`scripts/poker-daemon.sh`；状态目录 `~/.config/poker-daemon/`（`address` 为当前地址，`daemon.log`/`server.log`/`tunnel.log` 为日志）
+- 自愈：SSH 断线 5 秒重连；另每 20 秒探测公网 `/ws`，连续两次 502 判定边缘静默失效并强制重连（lhr 免费边缘会在 SSH 仍连接时停止转发）
 - 地址发布：隧道域名变化时自动写入 Cloudflare DNS TXT 记录 `_poker.lain-priv.work`（TTL 120）
 - 玩家加入：app → 联机对战 → **服务器地址留空** → 创建房间或填房间码加入。客户端经阿里 DoH（`dns.alidns.com`，失败回退 `doh.pub`）读取 TXT 得到当前 `wss://` 地址，无需手动分享地址
 - 防休眠：脚本附带 `caffeinate -s`（仅接电源时阻止系统休眠）；合盖/断电仍会中断，唤醒后自动重连并发布新地址

@@ -7,6 +7,7 @@ import com.aniapp.pokerdemo.net.ServerMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +26,6 @@ data class OnlineConfig(
 )
 
 class OnlineSession(
-    private val scope: CoroutineScope,
     private val config: OnlineConfig
 ) : GameSession {
 
@@ -43,6 +43,8 @@ class OnlineSession(
         data class Ended(val message: String) : Phase
     }
 
+    // 网络收发与 JSON 编解码离开主线程，避免点击与结算重组争抢 UI 帧
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val client = GameClient(scope)
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var disposed = false
@@ -174,6 +176,7 @@ class OnlineSession(
 
     override fun dispose() {
         disposed = true
+        scope.cancel()
         cleanupScope.launch { runCatching { client.close() } }
     }
 }

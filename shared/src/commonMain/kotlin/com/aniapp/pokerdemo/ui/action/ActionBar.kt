@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -28,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,6 +41,7 @@ import com.aniapp.pokerdemo.session.GameUiState
 import com.aniapp.pokerdemo.ui.theme.FoldButton
 import com.aniapp.pokerdemo.ui.theme.Gold
 import com.aniapp.pokerdemo.ui.theme.TableSurface
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 @Composable
@@ -44,10 +50,26 @@ fun ActionBar(
     onAction: (PlayerAction) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val enabled = ui.isPlayerTurn && !ui.aiThinking
+    var pending by remember { mutableStateOf<PlayerAction?>(null) }
+    val myTurn = ui.isPlayerTurn && !ui.aiThinking
+    val enabled = myTurn && pending == null
     val legal = ui.legal
     var showRaise by remember { mutableStateOf(false) }
     var raiseTo by remember { mutableIntStateOf(0) }
+    val haptic = LocalHapticFeedback.current
+    // 服务器快照到达即解除等待；超时兜底防止断线时按钮永久锁死
+    LaunchedEffect(ui) { pending = null }
+    LaunchedEffect(pending) {
+        if (pending != null) {
+            delay(2500)
+            pending = null
+        }
+    }
+    fun submit(action: PlayerAction) {
+        pending = action
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        onAction(action)
+    }
     LaunchedEffect(ui.isPlayerTurn, ui.table.phase, ui.table.currentBet, ui.table.handNumber) {
         showRaise = false
     }
@@ -59,7 +81,7 @@ fun ActionBar(
                 onRaiseTo = { raiseTo = it },
                 onConfirm = {
                     showRaise = false
-                    onAction(PlayerAction.RaiseTo(raiseTo))
+                    submit(PlayerAction.RaiseTo(raiseTo))
                 }
             )
         }
@@ -68,7 +90,7 @@ fun ActionBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Button(
-                onClick = { onAction(PlayerAction.Fold) },
+                onClick = { submit(PlayerAction.Fold) },
                 enabled = enabled && legal.canFold,
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(
@@ -77,12 +99,12 @@ fun ActionBar(
                     disabledContainerColor = Color(0xFF3A3A3A),
                     disabledContentColor = Color.Gray
                 )
-            ) { Text("弃牌", maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            if (enabled && legal.canCheck) {
+            ) { ActionLabel("弃牌", pending == PlayerAction.Fold) }
+            if (myTurn && legal.canCheck) {
                 Button(
-                    onClick = { onAction(PlayerAction.Check) },
+                    onClick = { submit(PlayerAction.Check) },
                     modifier = Modifier.weight(1f)
-                ) { Text("过牌", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                ) { ActionLabel("过牌", pending == PlayerAction.Check) }
             } else {
                 val label = when {
                     !enabled -> "跟注"
@@ -90,10 +112,10 @@ fun ActionBar(
                     else -> "跟注 ${legal.callAmount}"
                 }
                 Button(
-                    onClick = { onAction(PlayerAction.Call) },
+                    onClick = { submit(PlayerAction.Call) },
                     enabled = enabled && legal.canCall,
                     modifier = Modifier.weight(1f)
-                ) { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                ) { ActionLabel(label, pending == PlayerAction.Call) }
             }
             Button(
                 onClick = {
@@ -108,6 +130,15 @@ fun ActionBar(
 }
 
 private val GameUiState.legal get() = table.legal
+
+@Composable
+private fun ActionLabel(text: String, busy: Boolean) {
+    if (busy) {
+        CircularProgressIndicator(Modifier.size(16.dp), color = LocalContentColor.current, strokeWidth = 2.dp)
+    } else {
+        Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

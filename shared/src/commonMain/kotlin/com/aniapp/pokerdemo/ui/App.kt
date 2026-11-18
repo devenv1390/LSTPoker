@@ -90,7 +90,7 @@ fun App(
             onBack = { screen = AppScreen.Start }
         )
         is AppScreen.Online -> {
-            val session = remember(s.config) { OnlineSession(scope, s.config) }
+            val session = remember(s.config) { OnlineSession(s.config) }
             DisposableEffect(session) { onDispose { session.dispose() } }
             val phase by session.phase.collectAsState()
             val error by session.error.collectAsState()
