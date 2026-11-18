@@ -17,8 +17,9 @@ object PublicAddress {
         "https://doh.pub/dns-query?name=$NAME&type=TXT"
     )
 
-    suspend fun resolve(): ServerAddress? {
-        for (url in PROVIDERS) {
+    suspend fun resolve(startProvider: Int = 0): ServerAddress? {
+        for (i in PROVIDERS.indices) {
+            val url = PROVIDERS[(startProvider + i) % PROVIDERS.size]
             val addr = runCatching {
                 withTimeout(8_000) {
                     val client = HttpClient(CIO)
@@ -34,6 +35,7 @@ object PublicAddress {
             }.getOrNull()
             if (addr != null) return addr
         }
-        return null
+        // DoH 全失败（污染/超时）时兜底固定域名；lhr 回退期间 TXT 仍优先，不受影响
+        return ServerAddress.parse("wss://poker.lain-priv.work")
     }
 }

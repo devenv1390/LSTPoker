@@ -3,6 +3,8 @@ package com.aniapp.pokerdemo.session
 import com.aniapp.pokerdemo.net.ClientMessage
 import com.aniapp.pokerdemo.net.GameClient
 import com.aniapp.pokerdemo.net.LobbySeat
+import com.aniapp.pokerdemo.net.PublicAddress
+import com.aniapp.pokerdemo.net.ServerAddress
 import com.aniapp.pokerdemo.net.ServerMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +24,8 @@ data class OnlineConfig(
     val seatCount: Int? = null,
     val joinCode: String? = null,
     val aiFill: Boolean = true,
-    val secure: Boolean = false
+    val secure: Boolean = false,
+    val autoDiscovery: Boolean = false
 )
 
 class OnlineSession(
@@ -68,11 +71,16 @@ class OnlineSession(
         scope.launch {
             try {
                 withTimeout(30_000) {
-                    // 免费隧道边缘偶发 502，握手失败重试两次后再报错
+                    // 免费隧道边缘偶发 502、DoH 缓存可能滞后：重试时换 DoH 源重新解析地址
                     var backoff = 1500L
                     repeat(3) { attempt ->
+                        val target = if (attempt > 0 && config.autoDiscovery) {
+                            PublicAddress.resolve(attempt) ?: config.toAddress()
+                        } else {
+                            config.toAddress()
+                        }
                         try {
-                            client.connect(config.host, config.port, config.secure)
+                            client.connect(target.host, target.port, target.secure)
                             return@withTimeout
                         } catch (e: Exception) {
                             if (attempt == 2) throw e
@@ -149,6 +157,8 @@ class OnlineSession(
     fun clearError() {
         _error.value = null
     }
+
+    private fun OnlineConfig.toAddress() = ServerAddress(host, port, secure)
 
     fun backToLobby() {
         pendingLobby?.let {

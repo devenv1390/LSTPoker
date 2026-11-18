@@ -73,7 +73,7 @@ fun LobbyForm(
     var resolving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    fun connectWith(addr: ServerAddress) {
+    fun connectWith(addr: ServerAddress, autoDiscovery: Boolean = false) {
         error = null
         onConnect(
             OnlineConfig(
@@ -83,7 +83,8 @@ fun LobbyForm(
                 nickname = nickname.trim().ifEmpty { "玩家" },
                 seatCount = if (creating) seatCount else null,
                 joinCode = if (creating) null else code,
-                aiFill = aiFill
+                aiFill = aiFill,
+                autoDiscovery = autoDiscovery
             )
         )
     }
@@ -178,7 +179,7 @@ fun LobbyForm(
                                 if (public == null) {
                                     error = "无法获取公共服务器地址：请检查网络，或手动填写地址"
                                 } else {
-                                    connectWith(public)
+                                    connectWith(public, autoDiscovery = true)
                                 }
                             }
                         }

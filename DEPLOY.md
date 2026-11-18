@@ -5,14 +5,16 @@
 
 ## 方式零：常驻公共服务器（本机已部署，推荐）
 
-本机已通过 launchd 常驻运行「服务器 + localhost.run 隧道 + 地址发布」，开机自启、断线自愈：
+本机已通过 launchd 常驻运行「服务器 + Cloudflare 命名隧道 + TXT 锚维护」，开机自启、断线自愈。**公网地址固定为 `wss://poker.lain-priv.work`，永不轮换**：
 
 - 服务：`com.aniapp.pokerdemo.server`（`~/Library/LaunchAgents/com.aniapp.pokerdemo.server.plist`）
-- 脚本：`scripts/poker-daemon.sh`；状态目录 `~/.config/poker-daemon/`（`address` 为当前地址，`daemon.log`/`server.log`/`tunnel.log` 为日志）
-- 自愈：SSH 断线 5 秒重连；另每 20 秒探测公网 `/ws`，连续两次 502 判定边缘静默失效并强制重连（lhr 免费边缘会在 SSH 仍连接时停止转发）
-- 地址发布：隧道域名变化时自动写入 Cloudflare DNS TXT 记录 `_poker.lain-priv.work`（TTL 120）
-- 玩家加入：app → 联机对战 → **服务器地址留空** → 创建房间或填房间码加入。客户端经阿里 DoH（`dns.alidns.com`，失败回退 `doh.pub`）读取 TXT 得到当前 `wss://` 地址，无需手动分享地址
-- 防休眠：脚本附带 `caffeinate -s`（仅接电源时阻止系统休眠）；合盖/断电仍会中断，唤醒后自动重连并发布新地址
+- 脚本：`scripts/poker-daemon.sh`；状态目录 `~/.config/poker-daemon/`（`address` 为当前地址，`daemon.log`/`server.log`/`cloudflared.log` 为日志）
+- 隧道：Cloudflare remotely-managed 命名隧道 `lstpoker`（ingress 在 CF 云端配置：`poker.lain-priv.work` → `http://localhost:8080`，CNAME 指向 `<隧道ID>.cfargotunnel.com`）。凭据 `tunnel-token`（600 权限，勿入 git）、`tunnel-id` 存于状态目录
+- **控制面必须走代理**：argotunnel 边缘大陆直连被阻断，脚本以 `--protocol http2`（TCP，Go 认 `HTTPS_PROXY`）+ 本地代理（默认 127.0.0.1:7897，`POKER_PROXY` 可改）启动 cloudflared。默认 QUIC/UDP 过不了 HTTP 代理，勿改回。玩家数据面走 CF 边缘 443，大陆直连无需代理（2026-11-18 手机流量实测通过）
+- 自愈：cloudflared 退出 5 秒重启；每 20 秒探测公网 `/ws`，连续两次失败重启 cloudflared；8080 掉线补拉服务器
+- TXT 锚：启动时 + 每 5 分钟确保 DNS TXT `_poker.lain-priv.work`（TTL 120）值为 `wss://poker.lain-priv.work`，兼容旧 APK 的 DoH 发现
+- 玩家加入：app → 联机对战 → **服务器地址留空** → 创建房间或填房间码加入。客户端经阿里 DoH（`dns.alidns.com`，失败回退 `doh.pub`）读 TXT；DoH 全失败时兜底直连固定域名
+- 防休眠：脚本附带 `caffeinate -s`（仅接电源时阻止系统休眠）；合盖/断电仍会中断，唤醒后自动重连（地址不变）
 
 管理命令：
 
@@ -25,16 +27,25 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.aniapp.pokerdemo.ser
 cat ~/.config/poker-daemon/address                               # 查看当前公网地址
 ```
 
-DNS 发布凭据（二选一）：
+TXT 维护凭据（二选一）：
 
 1. cf CLI 已登录（OAuth，含 refresh token）。若过期重新授权：
    `HTTPS_PROXY=http://127.0.0.1:7897 NODE_OPTIONS=--use-env-proxy cf auth login`
    （cf 的 node fetch 不认环境变量代理，必须加 `NODE_OPTIONS=--use-env-proxy`；脚本内已自动设置）
 2. 或在 `~/.config/poker-daemon/cf-token` 放一枚 Zone DNS Edit 权限的 API token（脚本优先用它，经本地代理调用 CF API）
 
-两者都不可用时隧道仍正常工作，只是 DNS 不更新（地址见 `address` 文件，需手动分享）。
+两者都不可用时隧道仍正常工作（固定域名不受影响），只是 TXT 不维护。
 
-注意：localhost.run 免费域名轮换后，DNS 缓存最多约 2 分钟内仍指向旧域名；客户端连接失败会自动重试两次，仍失败则重进一次即可。
+### 回退 localhost.run 旧链路
+
+若 CF 边缘在大陆不可达（如运营商策略变化），可整体回退旧的 lhr 隧道：
+
+```bash
+# 在 plist 的 EnvironmentVariables 里加 POKER_TUNNEL_MODE=lhr，然后：
+launchctl kickstart -k gui/$(id -u)/com.aniapp.pokerdemo.server
+```
+
+新脚本会委托 `scripts/poker-daemon-lhr.sh`（旧版留档），自动重连 lhr 并把 TXT 改回轮换地址。恢复 CF 模式：删掉该环境变量再 kickstart。TXT TTL 120，切换约 2 分钟内对客户端生效。
 
 ## 方式一：互联网开房（一键脚本，临时局）
 
@@ -58,8 +69,8 @@ brew install cloudflared        # 可选；不装则直接走 localhost.run 回�
 
 ### 中国大陆网络说明
 
-- cloudflared **不走系统代理/HTTP_PROXY 环境变量**，直连 Cloudflare 常被阻断。若要用 Cloudflare 隧道，需在代理客户端开启 **TUN/增强模式**。
-- 不开 TUN 时脚本会自动回退 localhost.run（SSH 隧道）。若 SSH 直连不通，指定本地代理端口：
+- cloudflared 默认 QUIC/UDP **不走 HTTP_PROXY 环境变量**，直连 Cloudflare 常被阻断；但 `--protocol http2`（TCP）认 `HTTPS_PROXY`，方式零即用此法经本地代理连控制面，**无需 TUN**。临时 quick tunnel（trycloudflare）同样可加 `--protocol http2` + 代理尝试。
+- 不开代理时脚本会自动回退 localhost.run（SSH 隧道）。若 SSH 直连不通，指定本地代理端口：
 
   ```bash
   POKER_PROXY=127.0.0.1:7897 ./scripts/host-online.sh
@@ -70,6 +81,8 @@ brew install cloudflared        # 可选；不装则直接走 localhost.run 回�
 - 加入方若也在墙内：手机需在 Wi-Fi 设置里把 HTTP 代理指向可出海的代理（如房主电脑的 Clash 混合端口，需开启「允许局域网连接」），或手机自带代理；桌面端可用 `proxychains4` 包裹启动。
 
 ## 方式二：固定地址（命名隧道，需 Cloudflare 账号 + 托管在 CF 的域名）
+
+> 方式零已用此方案部署（remotely-managed + token，无需 `tunnel login` 浏览器授权）。以下本地凭据流程仅作备选参考。
 
 适合长期固定开局，地址不随重启变化：
 
@@ -113,8 +126,9 @@ cloudflared tunnel run lstpoker
 
 | 输入 | 含义 |
 |---|---|
-| （留空） | 公共服务器：DoH 读取 `_poker.lain-priv.work` TXT 自动获取地址 |
-| `wss://xxx.trycloudflare.com` | Cloudflare 隧道（默认端口 443） |
+| （留空） | 公共服务器：DoH 读取 `_poker.lain-priv.work` TXT 自动获取地址，DoH 全失败兜底 `wss://poker.lain-priv.work` |
+| `wss://poker.lain-priv.work` | 常驻公共服务器固定地址（方式零） |
+| `wss://xxx.trycloudflare.com` | Cloudflare 临时隧道（默认端口 443） |
 | `wss://xxx.app.lhr.life` | localhost.run 隧道（默认端口 443） |
 | `ws://host:port` | 明文 WebSocket |
 | `192.168.1.5:8080` 或 `192.168.1.5` | 局域网直连（默认端口 8080） |
@@ -122,8 +136,8 @@ cloudflared tunnel run lstpoker
 ## 已知限制
 
 - 房主机器必须开机运行服务器；无云端托管（Cloudflare 免费层不支持 JVM）
-- localhost.run 免费域名会周期性轮换：常驻服务（方式零）会自动重连并把新地址发布到 DNS；手动脚本（方式一）需重新分享地址
-- localhost.run 免费边缘偶发瞬时 502，客户端连接已带两次自动重试
+- 方式零依赖本机代理进程连隧道控制面：代理挂则隧道断，launchd 自愈等代理恢复；玩家侧不受影响（走 CF 边缘）
+- 回退 lhr 模式时免费域名会周期性轮换：旧脚本自动重连并把新地址发布到 DNS；客户端连接失败自动换 DoH 源重试
 - 房间为内存态：服务器重启即丢房间，无断线重连（手牌中断线由 AI 托管打完本手）
 - 4 位字母房间码在公网可被猜测，适合熟人局；勿用于涉赌场景
 - Cloudflare 边缘会断开空闲 WebSocket，客户端/服务器已配置 15 秒 ping 保活
