@@ -33,7 +33,9 @@ class LocalSessionTest {
         scope = scope,
         engine = TableEngine(players = listOf(PlayerInit("你"), PlayerInit("电脑")), random = Random(1)),
         ai = CallBot(),
-        aiRandom = Random(1)
+        aiRandom = Random(1),
+        // AI 决策默认在 Dispatchers.Default 上跑（真实线程），测试注入调度器以保持虚拟时间确定性
+        aiDispatcher = dispatcher
     )
 
     @Test

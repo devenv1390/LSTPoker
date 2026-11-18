@@ -7,11 +7,14 @@ import com.aniapp.pokerdemo.engine.PlayerAction
 import com.aniapp.pokerdemo.engine.PlayerInit
 import com.aniapp.pokerdemo.engine.TableEngine
 import com.aniapp.pokerdemo.engine.ai.AiStrategy
-import com.aniapp.pokerdemo.engine.ai.AiView
-import com.aniapp.pokerdemo.engine.ai.RuleBasedAi
+import com.aniapp.pokerdemo.engine.ai.aiViewOf
+import com.aniapp.pokerdemo.engine.ai.sanitize
+import com.aniapp.pokerdemo.engine.ai.mc.MonteCarloAi
 import com.aniapp.pokerdemo.net.SeatInfo
 import com.aniapp.pokerdemo.net.TableView
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,14 +22,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 class LocalSession(
     private val scope: CoroutineScope,
     aiCount: Int = 1,
     private val engine: TableEngine = defaultEngine(aiCount),
-    private val ai: AiStrategy = RuleBasedAi(),
-    private val aiRandom: Random = Random.Default
+    private val ai: AiStrategy = MonteCarloAi(),
+    private val aiRandom: Random = Random.Default,
+    private val aiDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : GameSession {
 
     private val mySeat = 0
@@ -91,27 +96,16 @@ class LocalSession(
                 _uiState.update { it.copy(aiThinking = true) }
                 delay(aiRandom.nextLong(700, 1401))
                 val legal = engine.legalActions(s)
-                val action = ai.decide(aiViewOf(s, legal.callAmount), legal, aiRandom)
+                val view = aiViewOf(engine.state, s, legal.callAmount, engine.config.bigBlind)
+                // 蒙特卡洛模拟是重计算，移出调用方（UI）线程；引擎状态变更仍回到原 scope 执行
+                val action = sanitize(
+                    withContext(aiDispatcher) { ai.decide(view, legal, aiRandom) },
+                    legal
+                )
                 publish(engine.act(s, action))
             }
             _uiState.update { it.copy(aiThinking = false) }
         }
-    }
-
-    private fun aiViewOf(seat: Int, toCall: Int): AiView {
-        val g = engine.state
-        val me = g.of(seat)
-        return AiView(
-            hole = me.hole,
-            board = g.board,
-            phase = g.phase,
-            pot = g.pot,
-            toCall = toCall,
-            streetBet = me.streetBet,
-            chips = me.chips,
-            bigBlind = engine.config.bigBlind,
-            activeOpponents = g.players.count { !it.isFolded && it.id != seat }
-        )
     }
 
     companion object {

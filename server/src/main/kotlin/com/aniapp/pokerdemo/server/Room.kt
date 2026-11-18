@@ -5,8 +5,13 @@ import com.aniapp.pokerdemo.engine.Phase
 import com.aniapp.pokerdemo.engine.PlayerAction
 import com.aniapp.pokerdemo.engine.PlayerInit
 import com.aniapp.pokerdemo.engine.TableEngine
+import com.aniapp.pokerdemo.engine.LegalActions
+import com.aniapp.pokerdemo.engine.ai.AiStrategy
 import com.aniapp.pokerdemo.engine.ai.AiView
-import com.aniapp.pokerdemo.engine.ai.RuleBasedAi
+import com.aniapp.pokerdemo.engine.ai.aiViewOf
+import com.aniapp.pokerdemo.engine.ai.sanitize
+import com.aniapp.pokerdemo.engine.ai.mc.MonteCarloAi
+import com.aniapp.pokerdemo.engine.ai.mc.MonteCarloConfig
 import com.aniapp.pokerdemo.net.LobbySeat
 import com.aniapp.pokerdemo.net.PokerJson
 import com.aniapp.pokerdemo.net.SeatInfo
@@ -87,7 +92,8 @@ class Room(
     private val manager: RoomManager,
     private val aiDelayMs: LongRange,
     private val random: Random,
-    var aiFill: Boolean = true
+    var aiFill: Boolean = true,
+    private val ai: AiStrategy = MonteCarloAi(MonteCarloConfig.Server)
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
@@ -97,7 +103,6 @@ class Room(
     // 引擎座位连续编号；关闭 AI 补位时房间座位可能稀疏，此表把引擎索引映射回房间座位
     private var seatMap: List<Int> = emptyList()
     private var inHand = false
-    private val ai = RuleBasedAi()
     private var aiJob: Job? = null
 
     private val humanCount: Int get() = seats.count { it != null && !it.isAi }
@@ -214,6 +219,37 @@ class Room(
         sendToHumans(lobby)
     }
 
+    // AI 回合快照：在锁内采集，供锁外做蒙特卡洛决策后校验提交
+    private class AiSnapshot(
+        val engineSeat: Int,
+        val view: AiView,
+        val legal: LegalActions,
+        val fingerprint: List<Int>
+    )
+
+    private enum class AiStep { CONTINUE_AI, STOP, STALE, DONE }
+
+    /** 须在持有 mutex 时调用；当前行动者不是 AI 或无进行中对局时返回 null */
+    private fun snapshotAiTurn(): AiSnapshot? {
+        val eng = engine ?: return null
+        if (!inHand || !eng.state.phase.isBetting()) return null
+        val s = eng.state.acting ?: return null
+        val sRoom = seatMap.getOrNull(s) ?: return null
+        if (seats[sRoom]?.isAi != true) return null
+        val legal = eng.legalActions(s)
+        return AiSnapshot(
+            engineSeat = s,
+            view = aiViewOf(eng.state, s, legal.callAmount, eng.config.bigBlind),
+            legal = legal,
+            fingerprint = fingerprintOf(eng)
+        )
+    }
+
+    private fun fingerprintOf(eng: TableEngine): List<Int> = with(eng.state) {
+        listOf(handNumber, phase.ordinal, acting ?: -1, currentBet, minRaiseTo, pot) +
+            players.flatMap { listOf(it.streetBet, it.chips, if (it.isFolded) 1 else 0, if (it.isAllIn) 1 else 0) }
+    }
+
     private fun maybeAiLoop() {
         val e = engine ?: return
         if (!e.state.phase.isBetting()) return
@@ -224,35 +260,50 @@ class Room(
         aiJob = scope.launch {
             while (true) {
                 delay(random.nextLong(aiDelayMs.first, aiDelayMs.last + 1))
-                mutex.withLock {
-                    val eng = engine ?: return@launch
-                    if (!inHand || !eng.state.phase.isBetting()) return@launch
-                    val s = eng.state.acting ?: return@launch
-                    val sRoom = seatMap.getOrNull(s) ?: return@launch
-                    if (seats[sRoom]?.isAi != true) return@launch
-                    val legal = eng.legalActions(s)
-                    val me = eng.state.of(s)
-                    val view = AiView(
-                        hole = me.hole,
-                        board = eng.state.board,
-                        phase = eng.state.phase,
-                        pot = eng.state.pot,
-                        toCall = legal.callAmount,
-                        streetBet = me.streetBet,
-                        chips = me.chips,
-                        bigBlind = eng.config.bigBlind,
-                        activeOpponents = eng.state.players.count { !it.isFolded && it.id != s }
-                    )
-                    val action = ai.decide(view, legal, random)
-                    val events = eng.act(s, action)
-                    broadcastUpdate(events)
-                    if (!eng.state.phase.isBetting()) {
-                        endHand()
-                        return@launch
+                var staleRetries = 0
+                while (true) {
+                    val snap = mutex.withLock { snapshotAiTurn() } ?: return@launch
+                    // 重计算放在锁外，人类动作不被 AI 思考阻塞
+                    val action = try {
+                        sanitize(ai.decide(snap.view, snap.legal, random), snap.legal)
+                    } catch (_: Exception) {
+                        when {
+                            snap.legal.canCall -> PlayerAction.Call
+                            snap.legal.canCheck -> PlayerAction.Check
+                            else -> PlayerAction.Fold
+                        }
                     }
-                    val next = eng.state.acting
-                    val nextRoom = next?.let { seatMap.getOrNull(it) }
-                    if (next == null || nextRoom == null || seats[nextRoom]?.isAi != true) return@launch
+                    val step = mutex.withLock {
+                        val eng = engine ?: return@withLock AiStep.DONE
+                        if (!inHand) return@withLock AiStep.DONE
+                        if (fingerprintOf(eng) != snap.fingerprint) {
+                            // 状态已被其他路径推进；该路径会自行重启 AI 循环或交接人类
+                            return@withLock if (eng.state.phase.isBetting()) AiStep.STALE else AiStep.DONE
+                        }
+                        val events = eng.act(snap.engineSeat, action)
+                        broadcastUpdate(events)
+                        if (!eng.state.phase.isBetting()) {
+                            endHand()
+                            AiStep.STOP
+                        } else {
+                            val next = eng.state.acting
+                            val nextRoom = next?.let { seatMap.getOrNull(it) }
+                            if (next == null || nextRoom == null || seats[nextRoom]?.isAi != true) {
+                                AiStep.STOP
+                            } else {
+                                AiStep.CONTINUE_AI
+                            }
+                        }
+                    }
+                    when (step) {
+                        AiStep.CONTINUE_AI -> {
+                            staleRetries = 0
+                        }
+                        AiStep.STOP, AiStep.DONE -> return@launch
+                        AiStep.STALE -> {
+                            if (++staleRetries >= 8) return@launch
+                        }
+                    }
                 }
             }
         }
