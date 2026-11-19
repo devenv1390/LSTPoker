@@ -1,5 +1,6 @@
 package com.aniapp.pokerdemo.session
 
+import com.aniapp.pokerdemo.engine.ai.AiDifficulty
 import com.aniapp.pokerdemo.net.ClientMessage
 import com.aniapp.pokerdemo.net.GameClient
 import com.aniapp.pokerdemo.net.LobbySeat
@@ -25,7 +26,8 @@ data class OnlineConfig(
     val joinCode: String? = null,
     val aiFill: Boolean = true,
     val secure: Boolean = false,
-    val autoDiscovery: Boolean = false
+    val autoDiscovery: Boolean = false,
+    val difficulty: AiDifficulty = AiDifficulty.STANDARD
 )
 
 class OnlineSession(
@@ -91,7 +93,7 @@ class OnlineSession(
                 }
                 val join = config.joinCode
                 if (join != null) client.send(ClientMessage.JoinRoom(join, config.nickname))
-                else client.send(ClientMessage.CreateRoom(config.nickname, config.seatCount ?: 6, config.aiFill))
+                else client.send(ClientMessage.CreateRoom(config.nickname, config.seatCount ?: 6, config.aiFill, config.difficulty))
             } catch (e: Exception) {
                 _phase.value = Phase.Ended(
                     if (config.secure) "无法连接服务器：请确认房主已启动服务器与隧道，且地址是最新的（快速隧道每次重启地址会变）"

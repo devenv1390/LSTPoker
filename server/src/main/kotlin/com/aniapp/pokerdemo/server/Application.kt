@@ -88,7 +88,7 @@ fun Application.module(aiDelayMs: LongRange = 700L..1400L) {
                                 reply(ServerMessage.Error("bad_seat_count", "座位数必须为 2-6"))
                                 continue
                             }
-                            join(manager.create(msg.seatCount, msg.aiFill), cleanName(msg.nickname))
+                            join(manager.create(msg.seatCount, msg.aiFill, msg.difficulty), cleanName(msg.nickname))
                         }
                         is ClientMessage.JoinRoom -> {
                             if (room != null) {

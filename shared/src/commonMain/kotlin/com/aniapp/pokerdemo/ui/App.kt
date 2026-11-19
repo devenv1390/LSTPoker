@@ -32,6 +32,8 @@ import com.aniapp.pokerdemo.session.OnlineConfig
 import com.aniapp.pokerdemo.session.OnlineSession
 import com.aniapp.pokerdemo.ui.lobby.LobbyForm
 import com.aniapp.pokerdemo.ui.lobby.LobbyView
+import com.aniapp.pokerdemo.engine.ai.AiDifficulty
+import com.aniapp.pokerdemo.engine.ai.AiProfiles
 import com.aniapp.pokerdemo.ui.start.StartScreen
 import com.aniapp.pokerdemo.ui.theme.Gold
 import com.aniapp.pokerdemo.ui.theme.TableBackground
@@ -39,7 +41,7 @@ import kotlinx.coroutines.delay
 
 sealed interface AppScreen {
     data object Start : AppScreen
-    data class Local(val aiCount: Int) : AppScreen
+    data class Local(val aiCount: Int, val difficulty: AiDifficulty = AiDifficulty.STANDARD) : AppScreen
     data object OnlineForm : AppScreen
     data class Online(val config: OnlineConfig) : AppScreen
 }
@@ -65,16 +67,17 @@ fun App(
 
     when (val s = screen) {
         AppScreen.Start -> StartScreen(
-            onLocalStart = { screen = AppScreen.Local(it) },
+            onLocalStart = { a, d -> screen = AppScreen.Local(a, d) },
             onOnlineStart = { screen = AppScreen.OnlineForm },
             versionText = versionText,
             logo = logo
         )
         is AppScreen.Local -> {
-            val session = remember(s.aiCount) {
+            val session = remember(s.aiCount, s.difficulty) {
                 LocalSession(
                     scope = scope,
                     aiCount = s.aiCount,
+                    ai = AiProfiles.local(s.difficulty),
                     engine = if (scenarioDeck != null || scenarioChips != null) {
                         LocalSession.defaultEngine(s.aiCount, scenarioDeck, scenarioChips)
                     } else {

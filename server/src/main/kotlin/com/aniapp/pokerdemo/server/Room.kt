@@ -6,6 +6,8 @@ import com.aniapp.pokerdemo.engine.PlayerAction
 import com.aniapp.pokerdemo.engine.PlayerInit
 import com.aniapp.pokerdemo.engine.TableEngine
 import com.aniapp.pokerdemo.engine.LegalActions
+import com.aniapp.pokerdemo.engine.ai.AiDifficulty
+import com.aniapp.pokerdemo.engine.ai.AiProfiles
 import com.aniapp.pokerdemo.engine.ai.AiStrategy
 import com.aniapp.pokerdemo.engine.ai.AiView
 import com.aniapp.pokerdemo.engine.ai.aiViewOf
@@ -46,13 +48,13 @@ class RoomManager(private val aiDelayMs: LongRange = 700L..1400L) {
     private val rooms = ConcurrentHashMap<String, Room>()
     private val random = Random.Default
 
-    fun create(seatCount: Int, aiFill: Boolean = true): Room {
+    fun create(seatCount: Int, aiFill: Boolean = true, difficulty: AiDifficulty = AiDifficulty.STANDARD): Room {
         require(seatCount in 2..6)
         var code: String
         do {
             code = (1..4).map { ('A'..'Z').random(random) }.joinToString("")
         } while (rooms.containsKey(code))
-        val room = Room(code, seatCount, this, aiDelayMs, random, aiFill)
+        val room = Room(code, seatCount, this, aiDelayMs, random, aiFill, AiProfiles.server(difficulty))
         rooms[code] = room
         return room
     }

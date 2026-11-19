@@ -6,6 +6,7 @@ import com.aniapp.pokerdemo.engine.HandResult
 import com.aniapp.pokerdemo.engine.LegalActions
 import com.aniapp.pokerdemo.engine.Phase
 import com.aniapp.pokerdemo.engine.PlayerAction
+import com.aniapp.pokerdemo.engine.ai.AiDifficulty
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -20,7 +21,12 @@ val PokerJson = Json {
 sealed interface ClientMessage {
     @Serializable
     @SerialName("create")
-    data class CreateRoom(val nickname: String, val seatCount: Int = 6, val aiFill: Boolean = true) : ClientMessage
+    data class CreateRoom(
+        val nickname: String,
+        val seatCount: Int = 6,
+        val aiFill: Boolean = true,
+        val difficulty: AiDifficulty = AiDifficulty.STANDARD
+    ) : ClientMessage
 
     @Serializable
     @SerialName("join")

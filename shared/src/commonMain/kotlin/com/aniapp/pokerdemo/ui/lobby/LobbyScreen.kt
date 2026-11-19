@@ -38,10 +38,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aniapp.pokerdemo.engine.ai.AiDifficulty
 import com.aniapp.pokerdemo.net.PublicAddress
 import com.aniapp.pokerdemo.net.ServerAddress
 import com.aniapp.pokerdemo.session.OnlineConfig
 import com.aniapp.pokerdemo.session.OnlineSession
+import com.aniapp.pokerdemo.ui.start.DifficultyChips
 import com.aniapp.pokerdemo.ui.theme.Gold
 import com.aniapp.pokerdemo.ui.theme.TableBackground
 import com.aniapp.pokerdemo.ui.theme.TableSurface
@@ -68,6 +70,7 @@ fun LobbyForm(
     var creating by remember { mutableStateOf(true) }
     var seatCount by remember { mutableIntStateOf(4) }
     var aiFill by remember { mutableStateOf(true) }
+    var difficulty by remember { mutableStateOf(AiDifficulty.STANDARD) }
     var code by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var resolving by remember { mutableStateOf(false) }
@@ -84,7 +87,8 @@ fun LobbyForm(
                 seatCount = if (creating) seatCount else null,
                 joinCode = if (creating) null else code,
                 aiFill = aiFill,
-                autoDiscovery = autoDiscovery
+                autoDiscovery = autoDiscovery,
+                difficulty = difficulty
             )
         )
     }
@@ -144,6 +148,14 @@ fun LobbyForm(
                 }
                 Spacer(Modifier.height(12.dp))
                 AiFillRow(checked = aiFill, enabled = true, onCheckedChange = { aiFill = it })
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("AI 难度", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+                    DifficultyChips(selected = difficulty, onSelect = { difficulty = it })
+                }
             } else {
                 OutlinedTextField(
                     value = code,

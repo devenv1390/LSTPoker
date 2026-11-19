@@ -20,6 +20,10 @@ data class MonteCarloConfig(
         val Sharp = MonteCarloConfig(simulations = 3000, valueThreshold = 0.60)
         val Server = MonteCarloConfig(simulations = 1200, timeBudgetNanos = 40_000_000)
         val Fast = MonteCarloConfig(simulations = 600, timeBudgetNanos = 5_000_000_000)
+
+        // 激进档：全线放大加注概率(aggression)、诈唬频率上调、价值线下探；模拟量不动以保住思考时间预算
+        val Aggressive = Balanced.copy(aggression = 1.3, bluffFrequency = 0.22, valueThreshold = 0.58)
+        val ServerAggressive = Server.copy(aggression = 1.3, bluffFrequency = 0.22, valueThreshold = 0.58)
     }
 }
 

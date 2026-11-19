@@ -15,10 +15,15 @@ import kotlin.test.assertTrue
  */
 class AiArenaTest {
 
-    private fun playSide(seed: Int, mcSeat: Int, maxHands: Int): Int {
+    private fun playSide(
+        seed: Int,
+        mcSeat: Int,
+        maxHands: Int,
+        mcConfig: MonteCarloConfig = MonteCarloConfig.Fast
+    ): Int {
         val random = Random(seed)
         val engine = huEngine(random = random)
-        val mc = MonteCarloAi(MonteCarloConfig.Fast)
+        val mc = MonteCarloAi(mcConfig)
         val rule = RuleBasedAi()
         engine.startMatch()
         var hands = 0
@@ -48,5 +53,17 @@ class AiArenaTest {
         val total = seat0Net + seat1Net
         println("AiArena: seat0Net=$seat0Net seat1Net=$seat1Net total=$total")
         assertTrue(total > 0, "蒙特卡洛 AI 未跑赢规则 AI: $seat0Net + $seat1Net = $total")
+    }
+
+    @Test
+    fun aggressiveConfigOutperformsRuleBased() {
+        val aggressive = MonteCarloConfig.Fast.copy(
+            aggression = 1.3, bluffFrequency = 0.22, valueThreshold = 0.58
+        )
+        val seat0Net = playSide(seed = 20261118, mcSeat = 0, maxHands = 120, mcConfig = aggressive)
+        val seat1Net = playSide(seed = 20261118, mcSeat = 1, maxHands = 120, mcConfig = aggressive)
+        val total = seat0Net + seat1Net
+        println("AiArena(aggressive): seat0Net=$seat0Net seat1Net=$seat1Net total=$total")
+        assertTrue(total > 0, "激进档未跑赢规则 AI: $seat0Net + $seat1Net = $total")
     }
 }

@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aniapp.pokerdemo.engine.Card
 import com.aniapp.pokerdemo.engine.Suit
+import com.aniapp.pokerdemo.engine.ai.AiDifficulty
 import com.aniapp.pokerdemo.ui.card.CardSize
 import com.aniapp.pokerdemo.ui.card.PlayingCard
 import com.aniapp.pokerdemo.ui.theme.CardWhite
@@ -54,13 +55,14 @@ import com.aniapp.pokerdemo.ui.theme.TableBackground
 
 @Composable
 fun StartScreen(
-    onLocalStart: (aiCount: Int) -> Unit,
+    onLocalStart: (aiCount: Int, difficulty: AiDifficulty) -> Unit,
     onOnlineStart: () -> Unit,
     versionText: String = "",
     logo: (@Composable () -> Unit)? = null
 ) {
     var entered by remember { mutableStateOf(false) }
     var aiCount by remember { mutableIntStateOf(1) }
+    var difficulty by remember { mutableStateOf(AiDifficulty.STANDARD) }
     LaunchedEffect(Unit) { entered = true }
     val fade by animateFloatAsState(if (entered) 1f else 0f, tween(600), label = "startFade")
     Box(Modifier.fillMaxSize().background(TableBackground)) {
@@ -132,9 +134,17 @@ fun StartScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
                 ) { Text("+", fontSize = 18.sp) }
             }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("AI 难度", color = CardWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                DifficultyChips(selected = difficulty, onSelect = { difficulty = it })
+            }
             Spacer(Modifier.height(16.dp))
             Button(
-                onClick = { onLocalStart(aiCount) },
+                onClick = { onLocalStart(aiCount, difficulty) },
                 modifier = Modifier.fillMaxWidth(0.62f).height(56.dp),
                 shape = RoundedCornerShape(28.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Color(0xFF241B04))
