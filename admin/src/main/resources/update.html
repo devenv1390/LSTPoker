@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#04150e">
+<title>LSTPoker · 局域网更新</title>
+<style>
+:root{--bg:#04150e;--panel:#0b3a29;--gold:#d9b45b;--cream:#f4ecd9;--muted:#9fbcab;--green:#3ecf8e}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--cream);background:radial-gradient(900px 600px at 50% 0,#105138,#04150e 70%);display:flex;align-items:center;justify-content:center;padding:24px}
+.card{width:min(460px,100%);background:rgba(7,39,28,.94);border:1px solid rgba(217,180,91,.35);border-radius:22px;padding:28px;box-shadow:0 24px 70px rgba(0,0,0,.45)}
+.brand{color:var(--gold);font-size:13px;letter-spacing:3px;font-weight:700}h1{font-size:30px;margin:10px 0 8px}p{color:var(--muted);font-size:14px;line-height:1.7}
+.version{margin:22px 0;padding:16px;border-radius:14px;background:rgba(2,12,7,.5);border:1px solid rgba(217,180,91,.14)}
+.row{display:flex;justify-content:space-between;gap:16px;padding:6px 0;font-size:13px}.row span{color:var(--muted)}.row b{font-weight:600;text-align:right;word-break:break-all}.hash{font-family:ui-monospace,monospace;font-size:10px!important}
+.download{display:flex;align-items:center;justify-content:center;min-height:52px;border-radius:14px;background:linear-gradient(160deg,#d9b45b,#a07c2c);color:#1d1503;font-size:17px;font-weight:700;text-decoration:none}.download:hover{filter:brightness(1.08)}.download.disabled{opacity:.4;pointer-events:none}
+.note{margin-top:20px;padding-top:18px;border-top:1px solid rgba(217,180,91,.14);font-size:12px}.note ol{padding-left:20px;margin:8px 0}.note li{margin:6px 0}.status{color:var(--green);font-size:12px;margin-top:10px}.error{color:#e99}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="brand">LSTPoker · LAN UPDATE</div>
+  <h1>局域网更新</h1>
+  <p>手机与这台 Mac 连接同一 Wi-Fi 后，可直接下载最新 Release APK。</p>
+  <div class="version">
+    <div class="row"><span>版本</span><b id="version">读取中…</b></div>
+    <div class="row"><span>版本号</span><b id="versionCode">—</b></div>
+    <div class="row"><span>文件大小</span><b id="size">—</b></div>
+    <div class="row"><span>构建时间</span><b id="modified">—</b></div>
+    <div class="row"><span>SHA-256</span><b class="hash" id="sha">—</b></div>
+  </div>
+  <a class="download disabled" id="download" href="/download/latest.apk">下载最新 Release APK</a>
+  <div class="status" id="status">正在检查最新安装包…</div>
+  <div class="note">
+    <ol>
+      <li>点击下载后，在浏览器下载列表或文件管理器中打开 APK。</li>
+      <li>若 Chrome 提示“无法安全下载”，这是局域网 HTTP 页面；确认连接的是自己的 Wi-Fi 后可点“保留”。</li>
+      <li>Android 首次安装可能要求允许该浏览器“安装未知应用”。</li>
+      <li>若提示签名冲突，请先卸载旧版再安装；更换正式证书后旧版不能直接覆盖。</li>
+    </ol>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+function bytes(n){if(n==null)return "—";const u=["B","KB","MB","GB"];let i=0,v=n;while(v>=1024&&i<u.length-1){v/=1024;i++}return v.toFixed(i?1:0)+" "+u[i]}
+async function load(){
+  try{
+    const r=await fetch("/api/apk",{cache:"no-store"});
+    if(!r.ok)throw new Error(r.status===404?"还没有 Release APK，请先在 Mac 上执行 ./gradlew :app:assembleRelease":"读取失败");
+    const a=await r.json();
+    $("version").textContent="v"+a.versionName;
+    $("versionCode").textContent=a.versionCode;
+    $("size").textContent=bytes(a.sizeBytes);
+    $("modified").textContent=new Date(a.modifiedAt).toLocaleString("zh-CN",{hour12:false});
+    $("sha").textContent=a.sha256;
+    $("download").href=a.downloadUrl;
+    $("download").classList.remove("disabled");
+    $("status").textContent="已找到最新正式签名安装包";
+  }catch(e){$("status").textContent=e.message;$("status").classList.add("error")}
+}
+load();
+</script>
+</body>
+</html>
