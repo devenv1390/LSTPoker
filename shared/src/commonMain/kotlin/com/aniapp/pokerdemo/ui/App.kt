@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aniapp.pokerdemo.engine.Deck
+import com.aniapp.pokerdemo.net.ServerAddress
 import com.aniapp.pokerdemo.session.LocalSession
 import com.aniapp.pokerdemo.session.OnlineConfig
 import com.aniapp.pokerdemo.session.OnlineSession
@@ -54,7 +55,10 @@ fun App(
     autoStartAiCount: Int = 1,
     scenarioDeck: (() -> Deck)? = null,
     scenarioChips: List<Int>? = null,
-    backHandler: (@Composable (onBack: () -> Unit) -> Unit)? = null
+    backHandler: (@Composable (onBack: () -> Unit) -> Unit)? = null,
+    onServerAddress: (ServerAddress) -> Unit = {},
+    onCheckUpdate: (() -> Unit)? = null,
+    updateOverlay: @Composable () -> Unit = {}
 ) {
     var screen by remember {
         mutableStateOf<AppScreen>(if (autoStartLocal) AppScreen.Local(autoStartAiCount) else AppScreen.Start)
@@ -66,12 +70,16 @@ fun App(
     }
 
     when (val s = screen) {
-        AppScreen.Start -> StartScreen(
-            onLocalStart = { a, d -> screen = AppScreen.Local(a, d) },
-            onOnlineStart = { screen = AppScreen.OnlineForm },
-            versionText = versionText,
-            logo = logo
-        )
+        AppScreen.Start -> Box(Modifier.fillMaxSize()) {
+            StartScreen(
+                onLocalStart = { a, d -> screen = AppScreen.Local(a, d) },
+                onOnlineStart = { screen = AppScreen.OnlineForm },
+                versionText = versionText,
+                logo = logo,
+                onCheckUpdate = onCheckUpdate
+            )
+            updateOverlay()
+        }
         is AppScreen.Local -> {
             val session = remember(s.aiCount, s.difficulty) {
                 LocalSession(
@@ -89,7 +97,10 @@ fun App(
             GameScreen(session)
         }
         AppScreen.OnlineForm -> LobbyForm(
-            onConnect = { screen = AppScreen.Online(it) },
+            onConnect = {
+                onServerAddress(ServerAddress(it.host, it.port, it.secure))
+                screen = AppScreen.Online(it)
+            },
             onBack = { screen = AppScreen.Start }
         )
         is AppScreen.Online -> {

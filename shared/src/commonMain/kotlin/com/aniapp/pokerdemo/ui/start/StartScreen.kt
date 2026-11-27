@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,7 +62,8 @@ fun StartScreen(
     onLocalStart: (aiCount: Int, difficulty: AiDifficulty) -> Unit,
     onOnlineStart: () -> Unit,
     versionText: String = "",
-    logo: (@Composable () -> Unit)? = null
+    logo: (@Composable () -> Unit)? = null,
+    onCheckUpdate: (() -> Unit)? = null
 ) {
     var entered by remember { mutableStateOf(false) }
     var aiCount by remember { mutableIntStateOf(1) }
@@ -164,7 +169,19 @@ fun StartScreen(
             Text("盲注 10/20 · 起始筹码 2000", fontSize = 12.sp, color = Color.White.copy(alpha = 0.45f))
             if (versionText.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
-                Text(versionText, fontSize = 11.sp, color = Color.White.copy(alpha = 0.3f))
+                val checkUpdate = onCheckUpdate
+                Text(
+                    if (checkUpdate != null) "$versionText · 检查更新" else versionText,
+                    fontSize = 11.sp,
+                    color = if (checkUpdate != null) Gold.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.3f),
+                    modifier = if (checkUpdate != null) {
+                        Modifier
+                            .clickable(onClickLabel = "检查更新") { checkUpdate() }
+                            .semantics { role = Role.Button }
+                    } else {
+                        Modifier
+                    }
+                )
             }
         }
     }

@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 // 版本末位与 versionCode 取"距项目起点的分钟数"，随时间单调自增，无需手动改版本
@@ -10,6 +11,12 @@ epochCal.set(2026, Calendar.NOVEMBER, 17, 0, 0, 0)
 epochCal.set(Calendar.MILLISECOND, 0)
 def autoVersion = Math.max(1L, Math.floorDiv(System.currentTimeMillis() - epochCal.timeInMillis, 60000L))
 def buildStamp = new Date().format("yyyyMMdd-HHmm", TimeZone.getTimeZone("Asia/Shanghai"))
+def releaseStorePath = findProperty('POKER_RELEASE_STORE_FILE') ?: System.getenv('POKER_RELEASE_STORE_FILE') ?:
+    "${System.getProperty('user.home')}/.android/keystores/pokerdemo-release.jks"
+def releaseStorePassword = findProperty('POKER_RELEASE_STORE_PASSWORD') ?: System.getenv('POKER_RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = findProperty('POKER_RELEASE_KEY_ALIAS') ?: System.getenv('POKER_RELEASE_KEY_ALIAS') ?: 'pokerdemo-release'
+def releaseKeyPassword = findProperty('POKER_RELEASE_KEY_PASSWORD') ?: System.getenv('POKER_RELEASE_KEY_PASSWORD')
+def releaseSigningReady = file(releaseStorePath).exists() && releaseStorePassword && releaseKeyPassword
 
 android {
     namespace 'com.aniapp.pokerdemo'
@@ -30,11 +37,14 @@ android {
 
     signingConfigs {
         release {
-            // 演示阶段复用 debug 证书使 release 包可直接安装；正式分发前替换为正式 keystore
-            storeFile file(System.getProperty("user.home") + "/.android/debug.keystore")
-            storePassword "android"
-            keyAlias "androiddebugkey"
-            keyPassword "android"
+            // 正式证书存放在用户目录；密码通过用户级 Gradle 配置或环境变量注入，不写入项目。
+            if (releaseSigningReady) {
+                storeFile file(releaseStorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+                enableV3Signing true
+            }
         }
     }
     buildTypes {
@@ -47,6 +57,15 @@ android {
     applicationVariants.all { variant ->
         variant.outputs.all {
             outputFileName = "LSTPoker-v${variant.versionName}-${variant.buildType.name}-${buildStamp}.apk"
+        }
+    }
+    tasks.configureEach { task ->
+        if (task.name in ['validateSigningRelease', 'validateReleaseSigning', 'assembleRelease', 'bundleRelease']) {
+            doFirst {
+                if (!releaseSigningReady) {
+                    throw new GradleException('Release 签名未配置：请设置 POKER_RELEASE_STORE_FILE、POKER_RELEASE_STORE_PASSWORD、POKER_RELEASE_KEY_PASSWORD，并确保 keystore 存在。')
+                }
+            }
         }
     }
     compileOptions {
@@ -66,7 +85,12 @@ dependencies {
     implementation libs.androidx.core.ktx
     implementation libs.androidx.lifecycle.runtime.ktx
     implementation libs.kotlinx.coroutines.android
+    implementation libs.kotlinx.serialization.json
+    implementation libs.ktor.client.core
+    implementation libs.ktor.client.cio
     implementation libs.androidx.activity.compose
+    testImplementation libs.junit
+    testImplementation libs.kotlinx.coroutines.test
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core
 }

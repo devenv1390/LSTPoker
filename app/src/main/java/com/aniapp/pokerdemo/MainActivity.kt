@@ -4,28 +4,40 @@ import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.lifecycleScope
 import com.aniapp.pokerdemo.engine.Card
 import com.aniapp.pokerdemo.engine.Deck
 import com.aniapp.pokerdemo.engine.Suit
 import com.aniapp.pokerdemo.engine.createDeck
 import com.aniapp.pokerdemo.ui.App
 import com.aniapp.pokerdemo.ui.theme.PokerDemoTheme
+import com.aniapp.pokerdemo.update.UpdateCoordinator
+import com.aniapp.pokerdemo.update.UpdateDialog
 
 class MainActivity : ComponentActivity() {
+    private val updateCoordinator by lazy { UpdateCoordinator(this, lifecycleScope) }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val scenario = intent.getStringExtra("scenario")
         val scenarioParts = scenario?.split("|")?.takeIf { it.size >= 3 }
         setContent {
+            val updateState by updateCoordinator.state.collectAsState()
+            val installSettings = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                updateCoordinator.onInstallPermissionResult()
+            }
             PokerDemoTheme {
                 App(
                     versionText = stringResource(R.string.app_version),
@@ -43,10 +55,27 @@ class MainActivity : ComponentActivity() {
                     autoStartAiCount = scenarioParts?.size?.minus(2) ?: 1,
                     scenarioDeck = scenarioDeck(scenarioParts),
                     scenarioChips = scenarioChips(),
-                    backHandler = { onBack -> BackHandler(onBack = onBack) }
+                    backHandler = { onBack -> BackHandler(onBack = onBack) },
+                    onServerAddress = updateCoordinator::rememberServerAddress,
+                    onCheckUpdate = updateCoordinator::checkManually,
+                    updateOverlay = {
+                        UpdateDialog(
+                            state = updateState,
+                            onConfirm = updateCoordinator::confirmDownload,
+                            onDismiss = updateCoordinator::dismiss,
+                            onOpenSettings = { installSettings.launch(updateCoordinator.installSettingsIntent()) },
+                            onRetry = updateCoordinator::retry
+                        )
+                    }
                 )
             }
         }
+        updateCoordinator.checkForUpdate(silent = true)
+    }
+
+    override fun onDestroy() {
+        updateCoordinator.close()
+        super.onDestroy()
     }
 
     // 真机验证入口：仅 debug 包生效

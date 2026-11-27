@@ -14,3 +14,10 @@
 .cxx
 local.properties
 .kotlin
+
+# Release signing material and local credentials
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
