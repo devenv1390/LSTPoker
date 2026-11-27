@@ -24,4 +24,11 @@ data class LegalActions(
 ) {
     val canCall: Boolean get() = callAmount > 0
     val canRaise: Boolean get() = minRaiseTo != null && maxRaiseTo != null
+
+    fun accepts(action: PlayerAction): Boolean = when (action) {
+        PlayerAction.Fold -> canFold
+        PlayerAction.Check -> canCheck
+        PlayerAction.Call -> canCall
+        is PlayerAction.RaiseTo -> canRaise && action.amount in minRaiseTo!!..maxRaiseTo!!
+    }
 }

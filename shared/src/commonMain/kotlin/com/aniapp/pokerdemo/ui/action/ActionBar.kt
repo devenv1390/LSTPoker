@@ -1,6 +1,7 @@
 package com.aniapp.pokerdemo.ui.action
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -36,11 +38,15 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aniapp.pokerdemo.analysis.AssistanceAnalysis
+import com.aniapp.pokerdemo.analysis.AdviceSituation
+import com.aniapp.pokerdemo.analysis.referenceEv
 import com.aniapp.pokerdemo.engine.PlayerAction
 import com.aniapp.pokerdemo.session.GameUiState
 import com.aniapp.pokerdemo.ui.theme.FoldButton
 import com.aniapp.pokerdemo.ui.theme.Gold
 import com.aniapp.pokerdemo.ui.theme.TableSurface
+import com.aniapp.pokerdemo.ui.assistance.formatReferenceEv
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -48,12 +54,14 @@ import kotlin.math.roundToInt
 fun ActionBar(
     ui: GameUiState,
     onAction: (PlayerAction) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    assistance: AssistanceAnalysis? = null
 ) {
     var pending by remember { mutableStateOf<PlayerAction?>(null) }
     val myTurn = ui.isPlayerTurn && !ui.aiThinking
     val enabled = myTurn && pending == null
     val legal = ui.legal
+    val recommended = assistance?.recommendation?.action
     var showRaise by remember { mutableStateOf(false) }
     var raiseTo by remember { mutableIntStateOf(0) }
     val haptic = LocalHapticFeedback.current
@@ -66,6 +74,7 @@ fun ActionBar(
         }
     }
     fun submit(action: PlayerAction) {
+        if (!legal.accepts(action)) return
         pending = action
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         onAction(action)
@@ -77,6 +86,7 @@ fun ActionBar(
         if (showRaise && enabled && legal.canRaise) {
             RaisePanel(
                 ui = ui,
+                assistance = assistance,
                 raiseTo = raiseTo,
                 onRaiseTo = { raiseTo = it },
                 onConfirm = {
@@ -92,19 +102,19 @@ fun ActionBar(
             Button(
                 onClick = { submit(PlayerAction.Fold) },
                 enabled = enabled && legal.canFold,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).recommendedBorder(recommended == PlayerAction.Fold),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = FoldButton,
                     contentColor = Color.White,
                     disabledContainerColor = Color(0xFF3A3A3A),
                     disabledContentColor = Color.Gray
                 )
-            ) { ActionLabel("弃牌", pending == PlayerAction.Fold) }
+            ) { ActionLabel("弃牌", pending == PlayerAction.Fold, recommended == PlayerAction.Fold) }
             if (myTurn && legal.canCheck) {
                 Button(
                     onClick = { submit(PlayerAction.Check) },
-                    modifier = Modifier.weight(1f)
-                ) { ActionLabel("过牌", pending == PlayerAction.Check) }
+                    modifier = Modifier.weight(1f).recommendedBorder(recommended == PlayerAction.Check)
+                ) { ActionLabel("过牌", pending == PlayerAction.Check, recommended == PlayerAction.Check) }
             } else {
                 val label = when {
                     !enabled -> "跟注"
@@ -114,17 +124,17 @@ fun ActionBar(
                 Button(
                     onClick = { submit(PlayerAction.Call) },
                     enabled = enabled && legal.canCall,
-                    modifier = Modifier.weight(1f)
-                ) { ActionLabel(label, pending == PlayerAction.Call) }
+                    modifier = Modifier.weight(1f).recommendedBorder(recommended == PlayerAction.Call)
+                ) { ActionLabel(label, pending == PlayerAction.Call, recommended == PlayerAction.Call) }
             }
             Button(
                 onClick = {
                     showRaise = !showRaise
-                    raiseTo = legal.minRaiseTo ?: 0
+                    raiseTo = (recommended as? PlayerAction.RaiseTo)?.amount ?: legal.minRaiseTo ?: 0
                 },
                 enabled = enabled && legal.canRaise,
-                modifier = Modifier.weight(1f)
-            ) { Text(if (showRaise) "收起" else "加注", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                modifier = Modifier.weight(1f).recommendedBorder(recommended is PlayerAction.RaiseTo)
+            ) { ActionLabel(if (showRaise) "收起" else "加注", false, recommended is PlayerAction.RaiseTo) }
         }
     }
 }
@@ -132,18 +142,27 @@ fun ActionBar(
 private val GameUiState.legal get() = table.legal
 
 @Composable
-private fun ActionLabel(text: String, busy: Boolean) {
+private fun ActionLabel(text: String, busy: Boolean, recommended: Boolean = false) {
     if (busy) {
         CircularProgressIndicator(Modifier.size(16.dp), color = LocalContentColor.current, strokeWidth = 2.dp)
     } else {
-        Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (recommended) {
+                Text("建议", color = LocalContentColor.current.copy(alpha = 0.75f), fontSize = 9.sp, lineHeight = 11.sp)
+            }
+        }
     }
 }
+
+private fun Modifier.recommendedBorder(recommended: Boolean): Modifier =
+    if (recommended) border(2.dp, Gold, RoundedCornerShape(20.dp)) else this
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RaisePanel(
     ui: GameUiState,
+    assistance: AssistanceAnalysis?,
     raiseTo: Int,
     onRaiseTo: (Int) -> Unit,
     onConfirm: () -> Unit
@@ -153,6 +172,10 @@ private fun RaisePanel(
     val bb = ui.bigBlind
     val table = ui.table
     val toCall = ui.legal.callAmount
+    val situation = remember(ui.table, ui.bigBlind) { AdviceSituation.from(ui.table, ui.bigBlind) }
+    val currentReferenceEv = assistance?.let { analysis ->
+        situation?.let { referenceEv(it, PlayerAction.RaiseTo(raiseTo), analysis.equity.value) }
+    }
 
     fun quick(fraction: Double): Int {
         val target = table.currentBet + ((table.pot + toCall) * fraction).roundToInt()
@@ -207,6 +230,14 @@ private fun RaisePanel(
                         )
                     }
                 }
+            )
+        }
+        if (currentReferenceEv != null) {
+            Text(
+                formatReferenceEv(currentReferenceEv),
+                color = Gold,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 8.dp)
             )
         }
         Button(

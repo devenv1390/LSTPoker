@@ -4,6 +4,7 @@ import com.aniapp.pokerdemo.engine.testCards
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class EquitySimulatorTest {
@@ -65,6 +66,23 @@ class EquitySimulatorTest {
         )
         assertTrue(r.simulations < 200_000, "应按预算截断: ${r.simulations}")
         assertTrue(r.simulations >= 256, "至少完成一轮块: ${r.simulations}")
+    }
+
+    @Test
+    fun cancellationStopsMonteCarloBetweenChunks() {
+        var checks = 0
+        assertFailsWith<kotlin.coroutines.cancellation.CancellationException> {
+            sim.equity(
+                hole = testCards("Ah Kh"),
+                board = emptyList(),
+                opponentCount = 1,
+                random = Random(3),
+                maxSimulations = 4000,
+                timeBudgetNanos = noBudget,
+                ensureActive = { if (++checks == 2) throw kotlin.coroutines.cancellation.CancellationException("cancelled") }
+            )
+        }
+        assertEquals(2, checks)
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.aniapp.pokerdemo.engine.huEngine
 import com.aniapp.pokerdemo.engine.testCards
 import kotlin.random.Random
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class MonteCarloAiContractTest {
@@ -103,6 +104,37 @@ class MonteCarloAiContractTest {
             val action = ai.decide(view, legal, Random(it))
             assertTrue(action is PlayerAction.Fold, "垃圾牌面对全下应弃牌")
         }
+    }
+
+    @Test
+    fun decisionFromEquityExplainsPotOddsCall() {
+        val view = viewOf("Ah Kh", "As 7d 2c", Phase.FLOP, pot = 300, toCall = 100, chips = 1000)
+        val legal = LegalActions(canFold = true, callAmount = 100)
+        val decision = MonteCarloAi(MonteCarloConfig.Assistance)
+            .decideFromEquity(view, legal, rawEquity = 0.40, random = Random(1))
+
+        assertEquals(PlayerAction.Call, decision.action)
+        assertEquals(MonteCarloReason.POT_ODDS_CALL, decision.reason)
+    }
+
+    @Test
+    fun decideMatchesExtractedDecisionForFixedRiverEquity() {
+        val view = viewOf("7h 7c", "7s 7d 2h 5c 9s", Phase.RIVER, pot = 400, toCall = 0, chips = 1000)
+        val legal = LegalActions(canFold = true, canCheck = true, minRaiseTo = 40, maxRaiseTo = 1000)
+        val ai = MonteCarloAi(MonteCarloConfig.Assistance)
+        val raw = EquitySimulator().equity(
+            hole = view.hole,
+            board = view.board,
+            opponentCount = 1,
+            random = Random(21),
+            maxSimulations = 1200,
+            timeBudgetNanos = 30_000_000
+        ).equity
+
+        val original = ai.decide(view, legal, Random(21))
+        val extracted = ai.decideFromEquity(view, legal, raw, Random(21)).action
+
+        assertEquals(original, extracted)
     }
 
     @Test

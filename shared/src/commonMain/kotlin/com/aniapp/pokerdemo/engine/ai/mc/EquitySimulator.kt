@@ -19,7 +19,8 @@ class EquitySimulator {
         opponentCount: Int,
         random: Random,
         maxSimulations: Int,
-        timeBudgetNanos: Long
+        timeBudgetNanos: Long,
+        ensureActive: () -> Unit = {}
     ): EquityResult {
         require(hole.size == 2) { "手牌必须 2 张，实际 ${hole.size}" }
         val opponents = opponentCount.coerceIn(1, 5)
@@ -47,14 +48,14 @@ class EquitySimulator {
         for (i in boardPacked.indices) buf[2 + i] = boardPacked[i]
 
         return if (board.size == 5 && opponents == 1) {
-            enumerateRiver(buf, pool, p)
+            enumerateRiver(buf, pool, p, ensureActive)
         } else {
-            monteCarlo(buf, myHole, pool, p, board.size, opponents, random, maxSimulations, timeBudgetNanos)
+            monteCarlo(buf, myHole, pool, p, board.size, opponents, random, maxSimulations, timeBudgetNanos, ensureActive)
         }
     }
 
     /** 河牌已定，单挑枚举对手全部 C(n,2) 手牌组合，精确胜率 */
-    private fun enumerateRiver(buf: IntArray, pool: IntArray, n: Int): EquityResult {
+    private fun enumerateRiver(buf: IntArray, pool: IntArray, n: Int, ensureActive: () -> Unit): EquityResult {
         val my0 = buf[0]
         val my1 = buf[1]
         val myScore = FastHandEvaluator.evaluate(buf, 7)
@@ -67,6 +68,7 @@ class EquitySimulator {
                 val opp = FastHandEvaluator.evaluate(buf, 7)
                 score += if (myScore > opp) 1.0 else if (myScore == opp) 0.5 else 0.0
                 done++
+                if (done % 256 == 0) ensureActive()
             }
         }
         buf[0] = my0
@@ -83,7 +85,8 @@ class EquitySimulator {
         opponents: Int,
         random: Random,
         maxSimulations: Int,
-        timeBudgetNanos: Long
+        timeBudgetNanos: Long,
+        ensureActive: () -> Unit
     ): EquityResult {
         val start = TimeSource.Monotonic.markNow()
         val needCommunity = 5 - boardCount
@@ -93,7 +96,10 @@ class EquitySimulator {
         var score = 0.0
 
         while (done < sims) {
-            if (done > 0 && done % 256 == 0 && start.elapsedNow().inWholeNanoseconds > timeBudgetNanos) break
+            if (done > 0 && done % 256 == 0) {
+                ensureActive()
+                if (start.elapsedNow().inWholeNanoseconds > timeBudgetNanos) break
+            }
             // 部分 Fisher-Yates：pool[0 until need] 为本轮抽取牌，牌池下一轮自动复用
             for (k in 0 until need) {
                 val j = random.nextInt(k, n)
