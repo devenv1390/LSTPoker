@@ -47,6 +47,9 @@ compose.desktop {
                 dirChooser = true
                 perUserInstall = true
             }
+            macOS {
+                iconFile.set(project.file("src/main/resources/LSTPoker.icns"))
+            }
         }
     }
 }

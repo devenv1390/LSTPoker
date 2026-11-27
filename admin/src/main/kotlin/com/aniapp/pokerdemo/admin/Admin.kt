@@ -43,7 +43,10 @@ fun main() {
     }.start(wait = true)
 }
 
-fun Application.module(releaseDir: File = File(Sys.root, "app/build/outputs/apk/release")) {
+fun Application.module(
+    releaseDir: File = File(Sys.root, "app/build/outputs/apk/release"),
+    otaPublisher: OtaPublisher = OtaPublisher()
+) {
     val apkDistribution = ApkDistribution(releaseDir)
     install(ContentNegotiation) {
         json(Json { encodeDefaults = true })
@@ -54,11 +57,15 @@ fun Application.module(releaseDir: File = File(Sys.root, "app/build/outputs/apk/
         val loopbackHost = hostname in setOf("127.0.0.1", "localhost", "::1")
         val remoteHost = call.request.local.remoteHost.lowercase()
         val loopbackRemote = remoteHost in setOf("127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1")
+        val proxied = call.request.headers["Cf-Ray"] != null ||
+            call.request.headers["Cf-Connecting-Ip"] != null ||
+            call.request.headers["X-Forwarded-For"] != null ||
+            call.request.headers["Forwarded"] != null
         val readOnlyLanPath = call.request.httpMethod in setOf(HttpMethod.Get, HttpMethod.Head) &&
             call.request.path() in setOf("/update", "/api/apk", "/download/latest.apk")
 
         // 管理 API 必须同时来自回环连接和回环 Host，防止局域网请求伪造 Host 绕过限制。
-        if ((!loopbackHost || !loopbackRemote) && !(readOnlyLanPath && isPrivateOrLocalHostname(hostname))) {
+        if (proxied || ((!loopbackHost || !loopbackRemote) && !(readOnlyLanPath && isPrivateOrLocalHostname(hostname)))) {
             call.respondText("管理接口仅限本机；手机更新请访问 /update", status = HttpStatusCode.Forbidden)
             finish()
             return@intercept
@@ -132,6 +139,19 @@ fun Application.module(releaseDir: File = File(Sys.root, "app/build/outputs/apk/
         }
         get("/api/status") {
             call.respond(withContext(Dispatchers.IO) { Sys.buildStatus() })
+        }
+        post("/api/update-pushes") {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            val release = withContext(Dispatchers.IO) { apkDistribution.latest() }
+            if (release == null) {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "尚未生成 Release APK"))
+                return@post
+            }
+            try {
+                call.respond(otaPublisher.publish(release))
+            } catch (_: OtaPublishException) {
+                call.respond(HttpStatusCode.BadGateway, mapOf("error" to "OTA 服务器不可达或响应无效"))
+            }
         }
         post("/api/service/{action}") {
             val action = call.parameters["action"]

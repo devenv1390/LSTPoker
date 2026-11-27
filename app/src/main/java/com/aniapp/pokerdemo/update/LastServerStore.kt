@@ -11,6 +11,7 @@ class LastServerStore(context: Context) {
         val endpoint = UpdateEndpoint.resolve(address) ?: return null
         preferences.edit()
             .putString(KEY_HOST, endpoint.host)
+            .putInt(KEY_GAME_PORT, endpoint.gamePort)
             .putBoolean(KEY_SECURE, endpoint.secure)
             .apply()
         return endpoint
@@ -19,11 +20,14 @@ class LastServerStore(context: Context) {
     suspend fun load(): UpdateEndpoint? {
         val host = preferences.getString(KEY_HOST, null) ?: return null
         val secure = preferences.getBoolean(KEY_SECURE, false)
-        return UpdateEndpoint.resolve(ServerAddress(host, UpdateEndpoint.UPDATE_PORT, secure))
+        val gamePort = preferences.getInt(KEY_GAME_PORT, DEFAULT_GAME_PORT)
+        return UpdateEndpoint.resolve(ServerAddress(host, gamePort, secure))
     }
 
     private companion object {
         const val KEY_HOST = "host"
+        const val KEY_GAME_PORT = "game_port"
         const val KEY_SECURE = "secure"
+        const val DEFAULT_GAME_PORT = 8080
     }
 }

@@ -9,8 +9,11 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.application.call
+import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
@@ -34,22 +37,56 @@ fun Application.module(aiDelayMs: LongRange = 700L..1400L) {
     }
     install(ContentNegotiation) { json(PokerJson) }
     val manager = RoomManager(aiDelayMs)
+    val otaRegistry = ConnectionRegistry()
     val startedAt = System.currentTimeMillis()
     routing {
         get("/status") {
             // cloudflared 从 loopback 连入，公网流量也呈本机地址，但必带 CF 头
-            val remote = call.request.local.remoteAddress
+            val remote = call.request.local.remoteHost.lowercase()
             val proxied = call.request.headers["Cf-Ray"] != null ||
                 call.request.headers["Cf-Connecting-Ip"] != null ||
-                call.request.headers["X-Forwarded-For"] != null
-            val loopback = remote == "127.0.0.1" || remote == "::1" || remote == "0:0:0:0:0:0:0:1"
+                call.request.headers["X-Forwarded-For"] != null ||
+                call.request.headers["Forwarded"] != null
+            val loopback = remote in setOf("127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1")
             if (!loopback || proxied) {
                 call.respond(HttpStatusCode.NotFound)
                 return@get
             }
-            call.respond(StatusPayload((System.currentTimeMillis() - startedAt) / 1000, manager.snapshotAll()))
+            call.respond(StatusPayload((System.currentTimeMillis() - startedAt) / 1000, manager.snapshotAll(), otaRegistry.count(), otaRegistry.lastPush))
+        }
+        post("/api/admin/v1/update-pushes") {
+            val host = call.request.headers["Host"]?.substringBefore(':')?.lowercase()
+            val remote = call.request.local.remoteHost.lowercase()
+            val loopback = remote in setOf("127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1")
+            val proxied = call.request.headers["Cf-Ray"] != null ||
+                call.request.headers["Cf-Connecting-Ip"] != null ||
+                call.request.headers["X-Forwarded-For"] != null ||
+                call.request.headers["Forwarded"] != null
+            if (!loopback || host !in setOf("127.0.0.1", "localhost", "::1") || proxied ||
+                call.request.headers["X-Admin-Request"] != "1"
+            ) {
+                call.respond(HttpStatusCode.Forbidden)
+                return@post
+            }
+            val request = call.receive<OtaPushRequest>()
+            if (request.campaignId.isBlank() || request.targetVersionCode <= 0 ||
+                request.targetVersionName.isBlank() || !Regex("[0-9a-f]{64}").matches(request.sha256)
+            ) {
+                call.respond(HttpStatusCode.BadRequest)
+                return@post
+            }
+            call.respond(otaRegistry.broadcast(request))
         }
         webSocket("/ws") {
+            if (call.request.queryParameters["role"] == "ota") {
+                val id = otaRegistry.add(this)
+                try {
+                    for (frame in incoming) { /* OTA 连接只接收，不参与游戏协议。 */ }
+                } finally {
+                    otaRegistry.remove(id)
+                }
+                return@webSocket
+            }
             var room: Room? = null
             var mySeat = -1
 
@@ -135,4 +172,9 @@ private fun cleanName(nickname: String): String =
     nickname.trim().take(12).ifEmpty { "玩家" }
 
 @Serializable
-data class StatusPayload(val uptimeSec: Long, val rooms: List<RoomSnapshot>)
+data class StatusPayload(
+    val uptimeSec: Long,
+    val rooms: List<RoomSnapshot>,
+    val otaConnections: Int = 0,
+    val lastOtaPush: OtaPushResult? = null
+)

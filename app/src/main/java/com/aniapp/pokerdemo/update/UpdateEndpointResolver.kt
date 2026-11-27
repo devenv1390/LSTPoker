@@ -3,12 +3,18 @@ package com.aniapp.pokerdemo.update
 import com.aniapp.pokerdemo.net.ServerAddress
 import java.net.InetAddress
 
-data class UpdateEndpoint(val host: String, val secure: Boolean) {
+data class UpdateEndpoint(val host: String, val secure: Boolean, val gamePort: Int = 8080) {
+    val gameAddress: ServerAddress
+        get() = ServerAddress(host, gamePort, secure)
+
     val baseUrl: String
         get() = "${if (secure) "https" else "http"}://${authority()}:8787"
 
     val metadataUrl: String get() = "$baseUrl/api/apk"
     val downloadUrl: String get() = "$baseUrl/download/latest.apk"
+
+    fun gameWebSocketUrl(versionCode: Long): String =
+        "${if (secure) "wss" else "ws"}://${authority()}:$gamePort/ws?role=ota&versionCode=$versionCode"
 
     private fun authority(): String {
         val normalized = normalizeHost(host) ?: host
@@ -36,7 +42,7 @@ data class UpdateEndpoint(val host: String, val secure: Boolean) {
                 addresses.isNotEmpty() && addresses.all(::isPrivateOrLinkLocal)
             }
             if (!allowed) return null
-            return UpdateEndpoint(host, address.secure)
+            return UpdateEndpoint(host, address.secure, address.port)
         }
 
         private fun normalizeHost(raw: String): String? {

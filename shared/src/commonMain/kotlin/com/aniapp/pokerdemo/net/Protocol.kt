@@ -105,7 +105,12 @@ sealed interface ServerMessage {
 
     @Serializable
     @SerialName("error")
-    data class Error(val code: String, val message: String) : ServerMessage
+    data class Error(
+        val code: String,
+        val message: String,
+        val updateId: String? = null,
+        val targetVersionCode: Int? = null
+    ) : ServerMessage
 
     @Serializable
     @SerialName("closed")
