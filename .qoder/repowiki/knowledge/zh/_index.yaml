@@ -1,0 +1,21 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+commit: 094640e742045003d313d8bf551492433765ea51
+branch: main
+exported_at: "2026-11-20T10:16:34Z"
+modules:
+    root:
+        dir_name: LSTPoker Android 单挑德州扑克应用（Android 入口模块）
+        title: LSTPoker Android 单挑德州扑克应用（Android 入口模块）
+        scope:
+            - app/
+            - gradle/
+            - build.gradle
+            - settings.gradle
+            - gradle.properties
+            - .gitignore
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

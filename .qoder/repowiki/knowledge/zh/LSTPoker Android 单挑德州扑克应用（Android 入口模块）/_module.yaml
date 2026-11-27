@@ -1,0 +1,55 @@
+schema_version: 1
+module_path: root
+title: LSTPoker Android 单挑德州扑克应用（Android 入口模块）
+scope:
+    - app/
+    - gradle/
+    - build.gradle
+    - settings.gradle
+    - gradle.properties
+    - .gitignore
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: ee583913-16b0-4450-8b92-daea218294a0
+kk_cards:
+    architecture_design:
+        id: ac579f5b-74ee-4d70-9945-7ffe8c6f6f5a
+        title: LSTPoker Android 单挑德州扑克应用（Android 入口模块）
+    coding_conventions:
+        id: a286d2c4-3825-404e-9a8f-67f3b8bf9b82
+        title: LSTPoker Android 单挑德州扑克应用（Android 入口模块）
+    overview:
+        id: 7f114046-4e51-4baa-b6fb-da899d2400f0
+        title: LSTPoker Android 单挑德州扑克应用（Android 入口模块）
+    tech_stack:
+        id: fe004453-efee-4ae1-98e2-4690d5dad43f
+        title: LSTPoker Android 单挑德州扑克应用（Android 入口模块）
+    unique_setup_and_commands:
+        id: d2c2cae2-bd66-4675-9400-fa63cec3b19e
+        title: LSTPoker Android 单挑德州扑克应用（Android 入口模块）
+    build_system:
+        id: 8d092be5-c56a-4bdc-935b-ba68e3be61e8
+        title: Gradle + Version Catalog 多模块 Kotlin Multiplatform 构建系统
+    configuration_system:
+        id: 9bfa7d54-225c-45df-815c-cc02330deec4
+        title: Gradle + Kotlin Multiplatform 多模块构建期配置体系（含 :admin 本地管理面板）
+    dependency_management:
+        id: f351c5d0-fa0e-49d4-b069-ccc5ca0d23ae
+        title: Gradle 版本目录 + Kotlin Multiplatform 五模块依赖管理
+    error_handling:
+        id: 82ee2a7a-f1ad-4cb1-a096-492197556473
+        title: LSTPoker：check 前置断言、GameEvent 事件流与 Ktor WebSocket/HTTP 结构化错误响应
+    frontend_style:
+        id: 17c955da-0346-4a17-ac88-fdd305ce5681
+        title: 基于 Material3 + Compose 的 LSTPoker 主题与样式系统（KMP shared）
+    logging_system:
+        id: 22859a4f-7f95-49cd-aecf-bced84fa49dc
+        title: 多模块 Logback 日志系统（server 与 admin）
+kk_repo_cards:
+    - build_system
+    - configuration_system
+    - dependency_management
+    - error_handling
+    - frontend_style
+    - logging_system
