@@ -1,3 +1,4 @@
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -6,9 +7,19 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
 }
 
+val desktopPlatform = providers.gradleProperty("desktopPlatform").orElse("currentOs")
+
 dependencies {
     implementation(project(":shared"))
-    implementation(compose.desktop.currentOs)
+    implementation(
+        when (desktopPlatform.get()) {
+            "windows-x64" -> compose.desktop.windows_x64
+            "linux-x64" -> compose.desktop.linux_x64
+            "macos-x64" -> compose.desktop.macos_x64
+            "macos-arm64" -> compose.desktop.macos_arm64
+            else -> compose.desktop.currentOs
+        }
+    )
     implementation(libs.kotlinx.coroutines.swing)
 }
 
@@ -24,5 +35,18 @@ java {
 compose.desktop {
     application {
         mainClass = "com.aniapp.pokerdemo.desktop.MainKt"
+        nativeDistributions {
+            packageName = "LSTPoker"
+            packageVersion = "1.0.0"
+            description = "LSTPoker 单挑德州扑克"
+            vendor = "LSTPoker"
+            targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Dmg)
+            windows {
+                shortcut = true
+                menu = true
+                dirChooser = true
+                perUserInstall = true
+            }
+        }
     }
 }
